@@ -1,0 +1,1397 @@
+"""
+Classe de base Compte et classes dérivées
+"""
+from typing import List, Dict
+from abc import ABC, abstractmethod
+from exceptions import SoldeInsuffisantError, MontantInvalideError, PlafondDepasseError
+from transaction import Transaction
+
+
+class Compte(ABC):
+    """Classe de base abstraite pour tous les types de comptes bancaires"""
+    
+    _compteur_comptes = 0
+    
+    def __init__(self, titulaire: str, solde_initial: float = 0.0):
+        """
+        Initialise un compte bancaire
+        
+        Args:
+            titulaire: Nom du titulaire du compte
+            solde_initial: Solde initial du compte (par défaut 0)
+        """
+        Compte._compteur_comptes += 1
+        self.numero_compte = f"FR{Compte._compteur_comptes:010d}"
+        self.titulaire = titulaire
+        self._solde = solde_initial
+        self.historique: List[Transaction] = []
+        
+        if solde_initial > 0:
+            self._ajouter_transaction(
+                "DEPOT_INITIAL",
+                solde_initial,
+                0,
+                solde_initial,
+                "Ouverture de compte"
+            )
+    
+    @property
+    def solde(self) -> float:
+        """Retourne le solde actuel du compte"""
+        return self._solde
+    
+    def _ajouter_transaction(self, type_transaction: str, montant: float,
+                            solde_avant: float, solde_apres: float,
+                            description: str = ""):
+        """Ajoute une transaction à l'historique"""
+        transaction = Transaction(
+            type_transaction,
+            montant,
+            solde_avant,
+            solde_apres,
+            description
+        )
+        self.historique.append(transaction)
+    
+    def _valider_montant(self, montant: float):
+        """Valide qu'un montant est positif"""
+        if montant <= 0:
+            raise MontantInvalideError(montant)
+    
+    def deposer(self, montant: float, description: str = "Dépôt"):
+        """
+        Dépose de l'argent sur le compte
+        
+        Args:
+            montant: Montant à déposer
+            description: Description de l'opération
+            
+        Raises:
+            MontantInvalideError: Si le montant est négatif ou nul
+        """
+        self._valider_montant(montant)
+        
+        solde_avant = self._solde
+        self._solde += montant
+        
+        self._ajouter_transaction(
+            "DEPOT",
+            montant,
+            solde_avant,
+            self._solde,
+            description
+        )
+        
+        print(f"✅ Dépôt de {montant:.2f}€ effectué. Nouveau solde : {self._solde:.2f}€")
+    
+    def retirer(self, montant: float, description: str = "Retrait"):
+        """
+        Retire de l'argent du compte
+        
+        Args:
+            montant: Montant à retirer
+            description: Description de l'opération
+            
+        Raises:
+            MontantInvalideError: Si le montant est négatif ou nul
+            SoldeInsuffisantError: Si le solde est insuffisant
+        """
+        self._valider_montant(montant)
+        
+        if self._solde < montant:
+            raise SoldeInsuffisantError(self._solde, montant)
+        
+        solde_avant = self._solde
+        self._solde -= montant
+        
+        self._ajouter_transaction(
+            "RETRAIT",
+            -montant,
+            solde_avant,
+            self._solde,
+            description
+        )
+        
+        print(f"✅ Retrait de {montant:.2f}€ effectué. Nouveau solde : {self._solde:.2f}€")
+    
+    def virement(self, compte_destinataire: 'Compte', montant: float,
+                 description: str = "Virement"):
+        """
+        Effectue un virement vers un autre compte
+        
+        Args:
+            compte_destinataire: Compte destinataire du virement
+            montant: Montant du virement
+            description: Description de l'opération
+            
+        Raises:
+            MontantInvalideError: Si le montant est négatif ou nul
+            SoldeInsuffisantError: Si le solde est insuffisant
+        """
+        self._valider_montant(montant)
+        
+        if self._solde < montant:
+            raise SoldeInsuffisantError(self._solde, montant)
+        
+        # Débiter le compte source
+        solde_avant_source = self._solde
+        self._solde -= montant
+        
+        self._ajouter_transaction(
+            "VIREMENT_SORTANT",
+            -montant,
+            solde_avant_source,
+            self._solde,
+            f"{description} vers {compte_destinataire.numero_compte}"
+        )
+        
+        # Créditer le compte destinataire
+        solde_avant_dest = compte_destinataire._solde
+        compte_destinataire._solde += montant
+        
+        compte_destinataire._ajouter_transaction(
+            "VIREMENT_ENTRANT",
+            montant,
+            solde_avant_dest,
+            compte_destinataire._solde,
+            f"{description} de {self.numero_compte}"
+        )
+        
+        print(f"✅ Virement de {montant:.2f}€ effectué vers "
+              f"{compte_destinataire.titulaire}. Nouveau solde : {self._solde:.2f}€")
+    
+    def afficher_historique(self, nb_dernieres: int = None):
+        """
+        Affiche l'historique des transactions
+        
+        Args:
+            nb_dernieres: Nombre de dernières transactions à afficher (None = toutes)
+        """
+        print(f"\n{'='*80}")
+        print(f"HISTORIQUE DES TRANSACTIONS - Compte {self.numero_compte}")
+        print(f"Titulaire : {self.titulaire}")
+        print(f"Solde actuel : {self._solde:.2f}€")
+        print(f"{'='*80}")
+        
+        transactions = self.historique[-nb_dernieres:] if nb_dernieres else self.historique
+        
+        if not transactions:
+            print("Aucune transaction")
+        else:
+            for transaction in transactions:
+                print(transaction)
+        
+        print(f"{'='*80}\n")
+    
+    def to_dict(self) -> Dict:
+        """Convertit le compte en dictionnaire pour la sérialisation"""
+        return {
+            'type': self.__class__.__name__,
+            'numero_compte': self.numero_compte,
+            'titulaire': self.titulaire,
+            'solde': self._solde,
+            'historique': [t.to_dict() for t in self.historique]
+        }
+    
+    @abstractmethod
+    def get_type_compte(self) -> str:
+        """Retourne le type de compte"""
+        pass
+    
+    def __str__(self) -> str:
+        """Représentation textuelle du compte"""
+        return (f"{self.get_type_compte()} n°{self.numero_compte} - "
+                f"{self.titulaire} - Solde : {self._solde:.2f}€")
+    
+    def __repr__(self) -> str:
+        return self.__str__()
+
+"""
+Classes dérivées : CompteEpargne et ComptePro
+"""
+from typing import Dict
+from compte import Compte
+from exceptions import PlafondDepasseError
+
+
+class CompteEpargne(Compte):
+    """Compte épargne avec taux d'intérêt et plafond de retrait mensuel"""
+    
+    PLAFOND_RETRAIT_MENSUEL = 3000.0  # Plafond de retrait par mois
+    
+    def __init__(self, titulaire: str, solde_initial: float = 0.0, 
+                 taux_interet: float = 0.02):
+        """
+        Initialise un compte épargne
+        
+        Args:
+            titulaire: Nom du titulaire
+            solde_initial: Solde initial
+            taux_interet: Taux d'intérêt annuel (par défaut 2%)
+        """
+        super().__init__(titulaire, solde_initial)
+        self.taux_interet = taux_interet
+        self.retraits_mois_actuel = 0.0
+    
+    def retirer(self, montant: float, description: str = "Retrait"):
+        """
+        Retire de l'argent avec contrôle du plafond mensuel
+        
+        Args:
+            montant: Montant à retirer
+            description: Description
+            
+        Raises:
+            PlafondDepasseError: Si le plafond mensuel est dépassé
+        """
+        if self.retraits_mois_actuel + montant > self.PLAFOND_RETRAIT_MENSUEL:
+            raise PlafondDepasseError(
+                self.PLAFOND_RETRAIT_MENSUEL,
+                self.retraits_mois_actuel + montant
+            )
+        
+        super().retirer(montant, description)
+        self.retraits_mois_actuel += montant
+    
+    def calculer_interets(self):
+        """Calcule et applique les intérêts annuels"""
+        interets = self._solde * self.taux_interet
+        
+        if interets > 0:
+            solde_avant = self._solde
+            self._solde += interets
+            
+            self._ajouter_transaction(
+                "INTERETS",
+                interets,
+                solde_avant,
+                self._solde,
+                f"Intérêts annuels ({self.taux_interet*100:.2f}%)"
+            )
+            
+            print(f"✅ Intérêts de {interets:.2f}€ ajoutés. Nouveau solde : {self._solde:.2f}€")
+    
+    def reinitialiser_plafond_mensuel(self):
+        """Réinitialise le compteur de retraits mensuels"""
+        self.retraits_mois_actuel = 0.0
+        print(f"✅ Plafond de retrait mensuel réinitialisé pour {self.titulaire}")
+    
+    def get_type_compte(self) -> str:
+        return "Compte Épargne"
+    
+    def to_dict(self) -> Dict:
+        """Convertit le compte en dictionnaire"""
+        data = super().to_dict()
+        data['taux_interet'] = self.taux_interet
+        data['retraits_mois_actuel'] = self.retraits_mois_actuel
+        return data
+    
+    def __str__(self) -> str:
+        return (f"{super().__str__()} - "
+                f"Taux : {self.taux_interet*100:.2f}% - "
+                f"Retraits mois : {self.retraits_mois_actuel:.2f}€/{self.PLAFOND_RETRAIT_MENSUEL:.2f}€")
+
+
+class ComptePro(Compte):
+    """Compte professionnel avec découvert autorisé et frais de gestion"""
+    
+    def __init__(self, titulaire: str, solde_initial: float = 0.0,
+                 decouvert_autorise: float = 1000.0,
+                 frais_gestion_mensuel: float = 15.0):
+        """
+        Initialise un compte professionnel
+        
+        Args:
+            titulaire: Nom du titulaire (entreprise)
+            solde_initial: Solde initial
+            decouvert_autorise: Montant du découvert autorisé
+            frais_gestion_mensuel: Frais de gestion mensuels
+        """
+        super().__init__(titulaire, solde_initial)
+        self.decouvert_autorise = decouvert_autorise
+        self.frais_gestion_mensuel = frais_gestion_mensuel
+    
+    def retirer(self, montant: float, description: str = "Retrait"):
+        """
+        Retire de l'argent avec découvert autorisé
+        
+        Args:
+            montant: Montant à retirer
+            description: Description
+            
+        Raises:
+            SoldeInsuffisantError: Si le découvert autorisé est dépassé
+        """
+        from exceptions import SoldeInsuffisantError
+        
+        self._valider_montant(montant)
+        
+        # Vérifier si le retrait dépasse le découvert autorisé
+        if self._solde - montant < -self.decouvert_autorise:
+            raise SoldeInsuffisantError(
+                self._solde + self.decouvert_autorise,
+                montant
+            )
+        
+        solde_avant = self._solde
+        self._solde -= montant
+        
+        self._ajouter_transaction(
+            "RETRAIT",
+            -montant,
+            solde_avant,
+            self._solde,
+            description
+        )
+        
+        if self._solde < 0:
+            print(f"⚠️ Retrait de {montant:.2f}€ effectué. "
+                  f"Solde : {self._solde:.2f}€ (découvert)")
+        else:
+            print(f"✅ Retrait de {montant:.2f}€ effectué. Nouveau solde : {self._solde:.2f}€")
+    
+    def appliquer_frais_gestion(self):
+        """Applique les frais de gestion mensuels"""
+        solde_avant = self._solde
+        self._solde -= self.frais_gestion_mensuel
+        
+        self._ajouter_transaction(
+            "FRAIS_GESTION",
+            -self.frais_gestion_mensuel,
+            solde_avant,
+            self._solde,
+            "Frais de gestion mensuel"
+        )
+        
+        print(f"💳 Frais de gestion de {self.frais_gestion_mensuel:.2f}€ prélevés. "
+              f"Nouveau solde : {self._solde:.2f}€")
+    
+    def get_type_compte(self) -> str:
+        return "Compte Professionnel"
+    
+    def to_dict(self) -> Dict:
+        """Convertit le compte en dictionnaire"""
+        data = super().to_dict()
+        data['decouvert_autorise'] = self.decouvert_autorise
+        data['frais_gestion_mensuel'] = self.frais_gestion_mensuel
+        return data
+    
+    def __str__(self) -> str:
+        return (f"{super().__str__()} - "
+                f"Découvert : {self.decouvert_autorise:.2f}€ - "
+                f"Frais : {self.frais_gestion_mensuel:.2f}€/mois")
+
+"""
+Exceptions personnalisées pour le système bancaire
+"""
+
+
+class SoldeInsuffisantError(Exception):
+    """Exception levée lorsque le solde est insuffisant pour une opération"""
+    def __init__(self, solde_actuel, montant_demande):
+        self.solde_actuel = solde_actuel
+        self.montant_demande = montant_demande
+        super().__init__(
+            f"Solde insuffisant : {solde_actuel}€ disponible, "
+            f"{montant_demande}€ demandé"
+        )
+
+
+class PlafondDepasseError(Exception):
+    """Exception levée lorsqu'un plafond est dépassé"""
+    def __init__(self, plafond, montant_demande):
+        self.plafond = plafond
+        self.montant_demande = montant_demande
+        super().__init__(
+            f"Plafond dépassé : {plafond}€ maximum autorisé, "
+            f"{montant_demande}€ demandé"
+        )
+
+
+class MontantInvalideError(Exception):
+    """Exception levée pour un montant invalide"""
+    def __init__(self, montant):
+        self.montant = montant
+        super().__init__(f"Montant invalide : {montant}€ (doit être > 0)")
+
+"""
+Exemple d'utilisation interactive du système bancaire
+Script permettant aux utilisateurs de créer et manipuler des comptes
+"""
+from comptes_derives import CompteEpargne, ComptePro
+from gestionnaire import GestionnaireBancaire
+from exceptions import SoldeInsuffisantError, PlafondDepasseError, MontantInvalideError
+
+
+def exemple_simple():
+    """Exemple simple et rapide"""
+    print("\n" + "="*80)
+    print("EXEMPLE SIMPLE D'UTILISATION")
+    print("="*80 + "\n")
+    
+    # 1. Créer un compte épargne
+    print("📌 Étape 1 : Créer un compte épargne")
+    mon_compte = CompteEpargne("Jean Dupont", 1000.0, taux_interet=0.02)
+    print(f"   ✅ {mon_compte}\n")
+    
+    # 2. Effectuer un dépôt
+    print("📌 Étape 2 : Effectuer un dépôt de 500€")
+    mon_compte.deposer(500.0, "Salaire")
+    print()
+    
+    # 3. Effectuer un retrait
+    print("📌 Étape 3 : Retirer 200€")
+    mon_compte.retirer(200.0, "Courses")
+    print()
+    
+    # 4. Calculer les intérêts
+    print("📌 Étape 4 : Calculer les intérêts annuels")
+    mon_compte.calculer_interets()
+    print()
+    
+    # 5. Afficher l'historique
+    print("📌 Étape 5 : Afficher l'historique")
+    mon_compte.afficher_historique()
+
+
+def exemple_virement():
+    """Exemple de virement entre deux comptes"""
+    print("\n" + "="*80)
+    print("EXEMPLE DE VIREMENT ENTRE COMPTES")
+    print("="*80 + "\n")
+    
+    # Créer deux comptes
+    print("📌 Création de deux comptes")
+    compte_alice = CompteEpargne("Alice", 2000.0)
+    compte_bob = ComptePro("Bob Entreprise", 5000.0)
+    print(f"   {compte_alice}")
+    print(f"   {compte_bob}\n")
+    
+    # Effectuer un virement
+    print("📌 Virement de 500€ d'Alice vers Bob")
+    compte_alice.virement(compte_bob, 500.0, "Prestation de service")
+    print()
+    
+    # Afficher les nouveaux soldes
+    print("📌 Soldes après virement :")
+    print(f"   Alice : {compte_alice.solde:.2f}€")
+    print(f"   Bob : {compte_bob.solde:.2f}€\n")
+
+
+def exemple_exceptions():
+    """Exemple de gestion des erreurs"""
+    print("\n" + "="*80)
+    print("EXEMPLE DE GESTION D'ERREURS")
+    print("="*80 + "\n")
+    
+    compte = CompteEpargne("Test", 500.0)
+    
+    # Tentative de retrait trop important
+    print("📌 Tentative de retrait de 1000€ (solde : 500€)")
+    try:
+        compte.retirer(1000.0)
+    except SoldeInsuffisantError as e:
+        print(f"   ❌ {e}")
+        print(f"   ℹ️ Solde disponible : {e.solde_actuel}€\n")
+    
+    # Tentative de montant négatif
+    print("📌 Tentative de dépôt négatif (-100€)")
+    try:
+        compte.deposer(-100.0)
+    except MontantInvalideError as e:
+        print(f"   ❌ {e}\n")
+
+
+def exemple_compte_pro():
+    """Exemple d'utilisation d'un compte professionnel"""
+    print("\n" + "="*80)
+    print("EXEMPLE DE COMPTE PROFESSIONNEL")
+    print("="*80 + "\n")
+    
+    # Créer un compte pro
+    print("📌 Création d'un compte professionnel")
+    compte = ComptePro("Tech Startup SARL", 3000.0, decouvert_autorise=2000.0, frais_gestion_mensuel=20.0)
+    print(f"   {compte}\n")
+    
+    # Utiliser le découvert
+    print("📌 Retrait de 4000€ (utilise le découvert)")
+    compte.retirer(4000.0, "Achat matériel")
+    print(f"   Solde actuel : {compte.solde:.2f}€\n")
+    
+    # Appliquer les frais
+    print("📌 Application des frais de gestion mensuels")
+    compte.appliquer_frais_gestion()
+    print()
+
+
+def exemple_persistance():
+    """Exemple de sauvegarde et chargement"""
+    print("\n" + "="*80)
+    print("EXEMPLE DE PERSISTANCE (SAUVEGARDE/CHARGEMENT)")
+    print("="*80 + "\n")
+    
+    fichier = "exemple_comptes.json"
+    
+    # Créer un gestionnaire et ajouter des comptes
+    print("📌 Création et ajout de comptes")
+    gestionnaire = GestionnaireBancaire(fichier)
+    
+    compte1 = CompteEpargne("Alice Martin", 5000.0, taux_interet=0.03)
+    compte1.deposer(1000.0)
+    compte1.calculer_interets()
+    
+    compte2 = ComptePro("Bob Corp", 10000.0)
+    compte2.retirer(3000.0)
+    
+    gestionnaire.ajouter_compte(compte1)
+    gestionnaire.ajouter_compte(compte2)
+    print()
+    
+    # Sauvegarder
+    print("📌 Sauvegarde des données")
+    gestionnaire.sauvegarder()
+    print()
+    
+    # Simuler un nouveau démarrage
+    print("📌 Simulation d'un redémarrage : chargement des données")
+    gestionnaire2 = GestionnaireBancaire(fichier)
+    gestionnaire2.charger()
+    gestionnaire2.lister_comptes()
+    
+    # Exporter un rapport
+    print("📌 Export d'un rapport détaillé")
+    gestionnaire2.exporter_rapport("exemple_rapport.txt")
+    print()
+
+
+def exemple_scenario_complet():
+    """Scénario complet d'utilisation"""
+    print("\n" + "="*80)
+    print("SCÉNARIO COMPLET : GESTION DE COMPTES FAMILIAUX")
+    print("="*80 + "\n")
+    
+    # Initialiser le gestionnaire
+    gestionnaire = GestionnaireBancaire("famille_martin.json")
+    
+    # Créer les comptes familiaux
+    print("📌 Création des comptes familiaux Martin")
+    compte_papa = ComptePro("Jean Martin (Pro)", 8000.0, decouvert_autorise=1500.0)
+    compte_maman = CompteEpargne("Sophie Martin", 5000.0, taux_interet=0.025)
+    compte_epargne_enfants = CompteEpargne("Épargne Enfants", 2000.0, taux_interet=0.03)
+    
+    gestionnaire.ajouter_compte(compte_papa)
+    gestionnaire.ajouter_compte(compte_maman)
+    gestionnaire.ajouter_compte(compte_epargne_enfants)
+    print()
+    
+    # Mois 1 : Salaires et dépenses
+    print("📌 MOIS 1 : Salaires et dépenses courantes")
+    print("─" * 80)
+    compte_papa.deposer(3500.0, "Salaire mensuel")
+    compte_maman.deposer(2800.0, "Salaire mensuel")
+    
+    # Dépenses
+    compte_papa.retirer(1200.0, "Loyer")
+    compte_papa.retirer(500.0, "Courses")
+    compte_maman.retirer(300.0, "Essence")
+    
+    # Épargne pour les enfants
+    compte_maman.virement(compte_epargne_enfants, 500.0, "Épargne mensuelle enfants")
+    
+    # Frais de gestion
+    compte_papa.appliquer_frais_gestion()
+    print()
+    
+    # Mois 2 : Dépense importante
+    print("📌 MOIS 2 : Achat d'une voiture")
+    print("─" * 80)
+    compte_papa.deposer(3500.0, "Salaire mensuel")
+    compte_maman.deposer(2800.0, "Salaire mensuel")
+    
+    # Achat voiture
+    compte_papa.retirer(8000.0, "Achat voiture (utilise découvert)")
+    
+    # Transfert pour rembourser
+    compte_maman.virement(compte_papa, 2000.0, "Participation achat voiture")
+    print()
+    
+    # Fin d'année : Intérêts
+    print("📌 FIN D'ANNÉE : Calcul des intérêts")
+    print("─" * 80)
+    compte_maman.calculer_interets()
+    compte_epargne_enfants.calculer_interets()
+    print()
+    
+    # Afficher le résumé
+    print("📌 RÉSUMÉ FINAL")
+    gestionnaire.lister_comptes()
+    
+    # Sauvegarder
+    gestionnaire.sauvegarder()
+    gestionnaire.exporter_rapport("rapport_famille_martin.txt")
+
+
+def menu_principal():
+    """Menu principal pour choisir les exemples"""
+    print("\n" + "🏦"*40)
+    print("SYSTÈME BANCAIRE - EXEMPLES D'UTILISATION")
+    print("🏦"*40)
+    
+    exemples = [
+        ("Exemple simple (création, dépôt, retrait)", exemple_simple),
+        ("Virement entre comptes", exemple_virement),
+        ("Gestion d'erreurs", exemple_exceptions),
+        ("Compte professionnel avec découvert", exemple_compte_pro),
+        ("Persistance (sauvegarde/chargement)", exemple_persistance),
+        ("Scénario complet (famille)", exemple_scenario_complet),
+        ("Exécuter tous les exemples", None)
+    ]
+    
+    print("\nChoisissez un exemple à exécuter :\n")
+    for i, (description, _) in enumerate(exemples, 1):
+        print(f"  {i}. {description}")
+    print(f"  0. Quitter")
+    
+    choix = input("\nVotre choix (0-7) : ").strip()
+    
+    if choix == "0":
+        print("\n👋 Au revoir !\n")
+        return False
+    
+    try:
+        index = int(choix) - 1
+        if 0 <= index < len(exemples):
+            if exemples[index][1] is None:  # Tous les exemples
+                for desc, func in exemples[:-1]:
+                    if func:
+                        func()
+                        input("\n⏸️  Appuyez sur Entrée pour continuer...")
+            else:
+                exemples[index][1]()
+                input("\n⏸️  Appuyez sur Entrée pour revenir au menu...")
+            return True
+        else:
+            print("\n❌ Choix invalide\n")
+            return True
+    except ValueError:
+        print("\n❌ Veuillez entrer un nombre\n")
+        return True
+
+
+if __name__ == "__main__":
+    # Mode automatique : exécuter tous les exemples
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--auto":
+        exemple_simple()
+        exemple_virement()
+        exemple_exceptions()
+        exemple_compte_pro()
+        exemple_persistance()
+        exemple_scenario_complet()
+        
+        print("\n" + "="*80)
+        print("✅ TOUS LES EXEMPLES ONT ÉTÉ EXÉCUTÉS")
+        print("="*80 + "\n")
+    else:
+        # Mode interactif
+        continuer = True
+        while continuer:
+            continuer = menu_principal()
+
+"""
+Gestionnaire de persistance JSON pour les comptes bancaires
+"""
+import json
+from typing import List, Dict
+from pathlib import Path
+from compte import Compte
+from comptes_derives import CompteEpargne, ComptePro
+from transaction import Transaction
+
+
+class GestionnaireBancaire:
+    """Gère la persistance et les opérations sur les comptes bancaires"""
+    
+    def __init__(self, fichier_donnees: str = "comptes_bancaires.json"):
+        """
+        Initialise le gestionnaire bancaire
+        
+        Args:
+            fichier_donnees: Nom du fichier JSON de persistance
+        """
+        self.fichier_donnees = fichier_donnees
+        self.comptes: List[Compte] = []
+    
+    def ajouter_compte(self, compte: Compte):
+        """Ajoute un compte à la liste des comptes"""
+        self.comptes.append(compte)
+        print(f"✅ Compte {compte.numero_compte} ajouté pour {compte.titulaire}")
+    
+    def trouver_compte(self, numero_compte: str) -> Compte:
+        """
+        Trouve un compte par son numéro
+        
+        Args:
+            numero_compte: Numéro du compte à trouver
+            
+        Returns:
+            Le compte trouvé ou None
+        """
+        for compte in self.comptes:
+            if compte.numero_compte == numero_compte:
+                return compte
+        return None
+    
+    def lister_comptes(self):
+        """Affiche la liste de tous les comptes"""
+        print(f"\n{'='*80}")
+        print(f"LISTE DES COMPTES ({len(self.comptes)} compte(s))")
+        print(f"{'='*80}")
+        
+        if not self.comptes:
+            print("Aucun compte enregistré")
+        else:
+            for compte in self.comptes:
+                print(f"  • {compte}")
+        
+        print(f"{'='*80}\n")
+    
+    def sauvegarder(self):
+        """Sauvegarde tous les comptes dans un fichier JSON"""
+        try:
+            data = {
+                'comptes': [compte.to_dict() for compte in self.comptes]
+            }
+            
+            with open(self.fichier_donnees, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            print(f"💾 Données sauvegardées dans {self.fichier_donnees}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de la sauvegarde : {e}")
+            return False
+    
+    def charger(self):
+        """Charge les comptes depuis le fichier JSON"""
+        try:
+            if not Path(self.fichier_donnees).exists():
+                print(f"ℹ️ Fichier {self.fichier_donnees} non trouvé. Démarrage avec une base vide.")
+                return True
+            
+            with open(self.fichier_donnees, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            self.comptes = []
+            
+            for compte_data in data.get('comptes', []):
+                compte = self._creer_compte_depuis_dict(compte_data)
+                if compte:
+                    self.comptes.append(compte)
+            
+            print(f"📂 {len(self.comptes)} compte(s) chargé(s) depuis {self.fichier_donnees}")
+            return True
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ Erreur de format JSON : {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Erreur lors du chargement : {e}")
+            return False
+    
+    def _creer_compte_depuis_dict(self, data: Dict) -> Compte:
+        """
+        Crée un compte à partir d'un dictionnaire
+        
+        Args:
+            data: Dictionnaire contenant les données du compte
+            
+        Returns:
+            Instance du compte créé
+        """
+        type_compte = data.get('type')
+        
+        # Créer le compte selon son type
+        if type_compte == 'CompteEpargne':
+            compte = CompteEpargne(
+                titulaire=data['titulaire'],
+                solde_initial=0,  # On va restaurer le solde après
+                taux_interet=data.get('taux_interet', 0.02)
+            )
+            compte.retraits_mois_actuel = data.get('retraits_mois_actuel', 0.0)
+            
+        elif type_compte == 'ComptePro':
+            compte = ComptePro(
+                titulaire=data['titulaire'],
+                solde_initial=0,
+                decouvert_autorise=data.get('decouvert_autorise', 1000.0),
+                frais_gestion_mensuel=data.get('frais_gestion_mensuel', 15.0)
+            )
+        else:
+            print(f"⚠️ Type de compte inconnu : {type_compte}")
+            return None
+        
+        # Restaurer les données du compte
+        compte.numero_compte = data['numero_compte']
+        compte._solde = data['solde']
+        
+        # Restaurer l'historique
+        compte.historique = []
+        for trans_data in data.get('historique', []):
+            transaction = Transaction.from_dict(trans_data)
+            compte.historique.append(transaction)
+        
+        return compte
+    
+    def exporter_rapport(self, fichier_rapport: str = "rapport_bancaire.txt"):
+        """Exporte un rapport détaillé de tous les comptes"""
+        try:
+            with open(fichier_rapport, 'w', encoding='utf-8') as f:
+                f.write("="*80 + "\n")
+                f.write("RAPPORT BANCAIRE COMPLET\n")
+                f.write("="*80 + "\n\n")
+                
+                total_soldes = 0
+                
+                for compte in self.comptes:
+                    f.write(f"\n{compte.get_type_compte()}\n")
+                    f.write("-"*80 + "\n")
+                    f.write(f"Numéro : {compte.numero_compte}\n")
+                    f.write(f"Titulaire : {compte.titulaire}\n")
+                    f.write(f"Solde : {compte.solde:.2f}€\n")
+                    
+                    if isinstance(compte, CompteEpargne):
+                        f.write(f"Taux d'intérêt : {compte.taux_interet*100:.2f}%\n")
+                        f.write(f"Retraits ce mois : {compte.retraits_mois_actuel:.2f}€\n")
+                    elif isinstance(compte, ComptePro):
+                        f.write(f"Découvert autorisé : {compte.decouvert_autorise:.2f}€\n")
+                        f.write(f"Frais de gestion : {compte.frais_gestion_mensuel:.2f}€/mois\n")
+                    
+                    f.write(f"\nNombre de transactions : {len(compte.historique)}\n")
+                    
+                    if compte.historique:
+                        f.write("\nDernières transactions :\n")
+                        for trans in compte.historique[-5:]:
+                            f.write(f"  {trans}\n")
+                    
+                    total_soldes += compte.solde
+                    f.write("\n")
+                
+                f.write("="*80 + "\n")
+                f.write(f"TOTAL DES SOLDES : {total_soldes:.2f}€\n")
+                f.write(f"NOMBRE DE COMPTES : {len(self.comptes)}\n")
+                f.write("="*80 + "\n")
+            
+            print(f"📄 Rapport exporté dans {fichier_rapport}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de l'export du rapport : {e}")
+            return False
+
+"""
+Programme principal de démonstration du système bancaire
+"""
+from comptes_derives import CompteEpargne, ComptePro
+from gestionnaire import GestionnaireBancaire
+from exceptions import SoldeInsuffisantError, PlafondDepasseError, MontantInvalideError
+
+
+def demo_operations_basiques():
+    """Démontre les opérations de base sur les comptes"""
+    print("\n" + "="*80)
+    print("DÉMONSTRATION 1 : OPÉRATIONS DE BASE")
+    print("="*80)
+    
+    # Créer des comptes
+    compte_epargne = CompteEpargne("Alice Martin", 5000.0, taux_interet=0.03)
+    compte_pro = ComptePro("Tech Innovations SARL", 10000.0, decouvert_autorise=2000.0)
+    
+    print(f"\n📌 Comptes créés :")
+    print(f"  {compte_epargne}")
+    print(f"  {compte_pro}")
+    
+    # Opérations de dépôt
+    print(f"\n{'─'*80}")
+    print("💰 DÉPÔTS")
+    print(f"{'─'*80}")
+    compte_epargne.deposer(1500.0, "Salaire mensuel")
+    compte_pro.deposer(5000.0, "Paiement client")
+    
+    # Opérations de retrait
+    print(f"\n{'─'*80}")
+    print("💸 RETRAITS")
+    print(f"{'─'*80}")
+    compte_epargne.retirer(500.0, "Courses")
+    compte_pro.retirer(8000.0, "Achat équipement")
+    
+    # Virement
+    print(f"\n{'─'*80}")
+    print("🔄 VIREMENTS")
+    print(f"{'─'*80}")
+    compte_pro.virement(compte_epargne, 1000.0, "Dividendes")
+    
+    return compte_epargne, compte_pro
+
+
+def demo_exceptions():
+    """Démontre la gestion des exceptions"""
+    print("\n" + "="*80)
+    print("DÉMONSTRATION 2 : GESTION DES EXCEPTIONS")
+    print("="*80)
+    
+    compte = CompteEpargne("Bob Dupont", 1000.0)
+    
+    # Test SoldeInsuffisantError
+    print(f"\n{'─'*80}")
+    print("❌ TEST : Retrait avec solde insuffisant")
+    print(f"{'─'*80}")
+    try:
+        compte.retirer(2000.0)
+    except SoldeInsuffisantError as e:
+        print(f"⚠️ Exception capturée : {e}")
+        print(f"   Solde disponible : {e.solde_actuel}€")
+        print(f"   Montant demandé : {e.montant_demande}€")
+    
+    # Test PlafondDepasseError
+    print(f"\n{'─'*80}")
+    print("❌ TEST : Dépassement du plafond de retrait mensuel")
+    print(f"{'─'*80}")
+    try:
+        compte.deposer(10000.0, "Gros dépôt")
+        compte.retirer(3500.0)  # Dépasse le plafond de 3000€
+    except PlafondDepasseError as e:
+        print(f"⚠️ Exception capturée : {e}")
+        print(f"   Plafond autorisé : {e.plafond}€")
+        print(f"   Montant demandé : {e.montant_demande}€")
+    
+    # Test MontantInvalideError
+    print(f"\n{'─'*80}")
+    print("❌ TEST : Montant négatif")
+    print(f"{'─'*80}")
+    try:
+        compte.deposer(-100.0)
+    except MontantInvalideError as e:
+        print(f"⚠️ Exception capturée : {e}")
+        print(f"   Montant invalide : {e.montant}€")
+
+
+def demo_fonctionnalites_avancees():
+    """Démontre les fonctionnalités avancées"""
+    print("\n" + "="*80)
+    print("DÉMONSTRATION 3 : FONCTIONNALITÉS AVANCÉES")
+    print("="*80)
+    
+    compte_epargne = CompteEpargne("Claire Dubois", 5000.0, taux_interet=0.025)
+    compte_pro = ComptePro("Consulting Pro", 3000.0, decouvert_autorise=1500.0)
+    
+    # Intérêts compte épargne
+    print(f"\n{'─'*80}")
+    print("📈 CALCUL DES INTÉRÊTS")
+    print(f"{'─'*80}")
+    compte_epargne.calculer_interets()
+    
+    # Frais de gestion compte pro
+    print(f"\n{'─'*80}")
+    print("💳 FRAIS DE GESTION")
+    print(f"{'─'*80}")
+    compte_pro.appliquer_frais_gestion()
+    
+    # Test découvert
+    print(f"\n{'─'*80}")
+    print("🔴 DÉCOUVERT AUTORISÉ")
+    print(f"{'─'*80}")
+    compte_pro.retirer(4000.0, "Gros achat")
+    print(f"Solde après retrait : {compte_pro.solde}€")
+    
+    return compte_epargne, compte_pro
+
+
+def demo_historique_et_persistance():
+    """Démontre l'historique et la persistance JSON"""
+    print("\n" + "="*80)
+    print("DÉMONSTRATION 4 : HISTORIQUE ET PERSISTANCE")
+    print("="*80)
+    
+    # Créer le gestionnaire
+    gestionnaire = GestionnaireBancaire("demo_comptes.json")
+    
+    # Créer plusieurs comptes avec des transactions
+    compte1 = CompteEpargne("Marie Leroy", 3000.0, taux_interet=0.02)
+    compte1.deposer(1000.0, "Économies")
+    compte1.retirer(500.0, "Cadeau")
+    compte1.calculer_interets()
+    
+    compte2 = ComptePro("Digital Agency", 8000.0, decouvert_autorise=3000.0)
+    compte2.deposer(2000.0, "Prestation")
+    compte2.retirer(5000.0, "Salaires")
+    compte2.appliquer_frais_gestion()
+    
+    compte3 = CompteEpargne("Thomas Bernard", 2000.0)
+    compte3.deposer(500.0, "Épargne")
+    
+    # Virement entre comptes
+    compte2.virement(compte1, 1500.0, "Paiement fournisseur")
+    
+    # Ajouter au gestionnaire
+    gestionnaire.ajouter_compte(compte1)
+    gestionnaire.ajouter_compte(compte2)
+    gestionnaire.ajouter_compte(compte3)
+    
+    # Afficher la liste des comptes
+    gestionnaire.lister_comptes()
+    
+    # Afficher l'historique d'un compte
+    compte1.afficher_historique()
+    
+    # Sauvegarder
+    print(f"\n{'─'*80}")
+    print("💾 SAUVEGARDE DES DONNÉES")
+    print(f"{'─'*80}")
+    gestionnaire.sauvegarder()
+    
+    # Exporter un rapport
+    print(f"\n{'─'*80}")
+    print("📄 EXPORT DU RAPPORT")
+    print(f"{'─'*80}")
+    gestionnaire.exporter_rapport("demo_rapport.txt")
+    
+    # Simuler un rechargement
+    print(f"\n{'─'*80}")
+    print("📂 CHARGEMENT DES DONNÉES")
+    print(f"{'─'*80}")
+    gestionnaire2 = GestionnaireBancaire("demo_comptes.json")
+    gestionnaire2.charger()
+    gestionnaire2.lister_comptes()
+    
+    # Afficher l'historique d'un compte chargé
+    if gestionnaire2.comptes:
+        print(f"\n{'─'*80}")
+        print("📜 HISTORIQUE D'UN COMPTE CHARGÉ")
+        print(f"{'─'*80}")
+        gestionnaire2.comptes[0].afficher_historique(nb_dernieres=3)
+
+
+def demo_complete():
+    """Exécute toutes les démonstrations"""
+    print("\n" + "🏦"*40)
+    print("SYSTÈME BANCAIRE ORIENTÉ OBJET - DÉMONSTRATION COMPLÈTE")
+    print("🏦"*40)
+    
+    try:
+        # Démonstration 1
+        demo_operations_basiques()
+        
+        # Démonstration 2
+        demo_exceptions()
+        
+        # Démonstration 3
+        demo_fonctionnalites_avancees()
+        
+        # Démonstration 4
+        demo_historique_et_persistance()
+        
+        print("\n" + "="*80)
+        print("✅ TOUTES LES DÉMONSTRATIONS TERMINÉES AVEC SUCCÈS")
+        print("="*80 + "\n")
+        
+    except Exception as e:
+        print(f"\n❌ Erreur inattendue : {e}")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    demo_complete()
+
+"""
+Tests unitaires pour le système bancaire
+"""
+import unittest
+from comptes_derives import CompteEpargne, ComptePro
+from gestionnaire import GestionnaireBancaire
+from exceptions import SoldeInsuffisantError, PlafondDepasseError, MontantInvalideError
+import os
+
+
+class TestCompteEpargne(unittest.TestCase):
+    """Tests pour la classe CompteEpargne"""
+    
+    def setUp(self):
+        """Initialisation avant chaque test"""
+        self.compte = CompteEpargne("Test User", 1000.0, taux_interet=0.05)
+    
+    def test_creation_compte(self):
+        """Test de création d'un compte"""
+        self.assertEqual(self.compte.titulaire, "Test User")
+        self.assertEqual(self.compte.solde, 1000.0)
+        self.assertEqual(self.compte.taux_interet, 0.05)
+    
+    def test_depot(self):
+        """Test de dépôt"""
+        self.compte.deposer(500.0)
+        self.assertEqual(self.compte.solde, 1500.0)
+    
+    def test_retrait_normal(self):
+        """Test de retrait normal"""
+        self.compte.retirer(300.0)
+        self.assertEqual(self.compte.solde, 700.0)
+    
+    def test_retrait_solde_insuffisant(self):
+        """Test de retrait avec solde insuffisant"""
+        with self.assertRaises(SoldeInsuffisantError):
+            self.compte.retirer(2000.0)
+    
+    def test_montant_negatif(self):
+        """Test de montant négatif"""
+        with self.assertRaises(MontantInvalideError):
+            self.compte.deposer(-100.0)
+    
+    def test_plafond_retrait(self):
+        """Test du plafond de retrait mensuel"""
+        self.compte.deposer(5000.0)  # Solde = 6000€
+        with self.assertRaises(PlafondDepasseError):
+            self.compte.retirer(3500.0)  # Dépasse le plafond de 3000€
+    
+    def test_calcul_interets(self):
+        """Test du calcul des intérêts"""
+        solde_initial = self.compte.solde
+        self.compte.calculer_interets()
+        interets_attendus = solde_initial * 0.05
+        self.assertAlmostEqual(self.compte.solde, solde_initial + interets_attendus, places=2)
+    
+    def test_historique(self):
+        """Test de l'historique des transactions"""
+        self.compte.deposer(500.0)
+        self.compte.retirer(200.0)
+        self.assertEqual(len(self.compte.historique), 3)  # 1 initial + 2 opérations
+
+
+class TestComptePro(unittest.TestCase):
+    """Tests pour la classe ComptePro"""
+    
+    def setUp(self):
+        """Initialisation avant chaque test"""
+        self.compte = ComptePro("Test Company", 5000.0, decouvert_autorise=1000.0)
+    
+    def test_creation_compte(self):
+        """Test de création d'un compte professionnel"""
+        self.assertEqual(self.compte.titulaire, "Test Company")
+        self.assertEqual(self.compte.solde, 5000.0)
+        self.assertEqual(self.compte.decouvert_autorise, 1000.0)
+    
+    def test_retrait_avec_decouvert(self):
+        """Test de retrait avec découvert"""
+        self.compte.retirer(5500.0)  # Solde devient -500€
+        self.assertEqual(self.compte.solde, -500.0)
+    
+    def test_depassement_decouvert(self):
+        """Test de dépassement du découvert autorisé"""
+        with self.assertRaises(SoldeInsuffisantError):
+            self.compte.retirer(7000.0)  # Dépasse le découvert de 1000€
+    
+    def test_frais_gestion(self):
+        """Test des frais de gestion"""
+        solde_avant = self.compte.solde
+        self.compte.appliquer_frais_gestion()
+        self.assertEqual(self.compte.solde, solde_avant - 15.0)
+
+
+class TestVirement(unittest.TestCase):
+    """Tests pour les virements entre comptes"""
+    
+    def setUp(self):
+        """Initialisation avant chaque test"""
+        self.compte1 = CompteEpargne("Alice", 2000.0)
+        self.compte2 = ComptePro("Bob Corp", 1000.0)
+    
+    def test_virement_normal(self):
+        """Test de virement normal"""
+        self.compte1.virement(self.compte2, 500.0)
+        self.assertEqual(self.compte1.solde, 1500.0)
+        self.assertEqual(self.compte2.solde, 1500.0)
+    
+    def test_virement_solde_insuffisant(self):
+        """Test de virement avec solde insuffisant"""
+        with self.assertRaises(SoldeInsuffisantError):
+            self.compte1.virement(self.compte2, 3000.0)
+    
+    def test_virement_historique(self):
+        """Test de l'historique après virement"""
+        nb_trans_initial_1 = len(self.compte1.historique)
+        nb_trans_initial_2 = len(self.compte2.historique)
+        
+        self.compte1.virement(self.compte2, 500.0)
+        
+        self.assertEqual(len(self.compte1.historique), nb_trans_initial_1 + 1)
+        self.assertEqual(len(self.compte2.historique), nb_trans_initial_2 + 1)
+
+
+class TestGestionnaireBancaire(unittest.TestCase):
+    """Tests pour le gestionnaire bancaire"""
+    
+    def setUp(self):
+        """Initialisation avant chaque test"""
+        self.fichier_test = "test_comptes.json"
+        self.gestionnaire = GestionnaireBancaire(self.fichier_test)
+    
+    def tearDown(self):
+        """Nettoyage après chaque test"""
+        if os.path.exists(self.fichier_test):
+            os.remove(self.fichier_test)
+    
+    def test_ajouter_compte(self):
+        """Test d'ajout de compte"""
+        compte = CompteEpargne("Test", 1000.0)
+        self.gestionnaire.ajouter_compte(compte)
+        self.assertEqual(len(self.gestionnaire.comptes), 1)
+    
+    def test_trouver_compte(self):
+        """Test de recherche de compte"""
+        compte = CompteEpargne("Test", 1000.0)
+        self.gestionnaire.ajouter_compte(compte)
+        
+        compte_trouve = self.gestionnaire.trouver_compte(compte.numero_compte)
+        self.assertIsNotNone(compte_trouve)
+        self.assertEqual(compte_trouve.numero_compte, compte.numero_compte)
+    
+    def test_sauvegarde_chargement(self):
+        """Test de sauvegarde et chargement"""
+        # Créer et ajouter des comptes
+        compte1 = CompteEpargne("Alice", 2000.0, taux_interet=0.03)
+        compte2 = ComptePro("Bob Corp", 5000.0)
+        
+        compte1.deposer(500.0)
+        compte2.retirer(1000.0)
+        
+        self.gestionnaire.ajouter_compte(compte1)
+        self.gestionnaire.ajouter_compte(compte2)
+        
+        # Sauvegarder
+        self.assertTrue(self.gestionnaire.sauvegarder())
+        
+        # Charger dans un nouveau gestionnaire
+        gestionnaire2 = GestionnaireBancaire(self.fichier_test)
+        self.assertTrue(gestionnaire2.charger())
+        
+        # Vérifier que les données sont identiques
+        self.assertEqual(len(gestionnaire2.comptes), 2)
+        
+        compte1_charge = gestionnaire2.trouver_compte(compte1.numero_compte)
+        self.assertIsNotNone(compte1_charge)
+        self.assertEqual(compte1_charge.solde, compte1.solde)
+        self.assertEqual(compte1_charge.titulaire, compte1.titulaire)
+        self.assertEqual(len(compte1_charge.historique), len(compte1.historique))
+
+
+class TestTransactions(unittest.TestCase):
+    """Tests pour les transactions"""
+    
+    def test_transaction_format(self):
+        """Test du format des transactions"""
+        compte = CompteEpargne("Test", 1000.0)
+        compte.deposer(500.0, "Test dépôt")
+        
+        transaction = compte.historique[-1]
+        self.assertEqual(transaction.type_transaction, "DEPOT")
+        self.assertEqual(transaction.montant, 500.0)
+        self.assertEqual(transaction.description, "Test dépôt")
+        self.assertIsNotNone(transaction.date)
+    
+    def test_transaction_serialisation(self):
+        """Test de la sérialisation des transactions"""
+        compte = CompteEpargne("Test", 1000.0)
+        compte.deposer(500.0)
+        
+        compte_dict = compte.to_dict()
+        self.assertIn('historique', compte_dict)
+        self.assertEqual(len(compte_dict['historique']), 2)  # 1 initial + 1 dépôt
+
+
+def run_tests():
+    """Exécute tous les tests"""
+    print("\n" + "="*80)
+    print("EXÉCUTION DES TESTS UNITAIRES")
+    print("="*80 + "\n")
+    
+    # Créer une suite de tests
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    
+    # Ajouter tous les tests
+    suite.addTests(loader.loadTestsFromTestCase(TestCompteEpargne))
+    suite.addTests(loader.loadTestsFromTestCase(TestComptePro))
+    suite.addTests(loader.loadTestsFromTestCase(TestVirement))
+    suite.addTests(loader.loadTestsFromTestCase(TestGestionnaireBancaire))
+    suite.addTests(loader.loadTestsFromTestCase(TestTransactions))
+    
+    # Exécuter les tests
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    
+    # Résumé
+    print("\n" + "="*80)
+    print(f"RÉSULTATS : {result.testsRun} tests")
+    print(f"✅ Succès : {result.testsRun - len(result.failures) - len(result.errors)}")
+    print(f"❌ Échecs : {len(result.failures)}")
+    print(f"⚠️ Erreurs : {len(result.errors)}")
+    print("="*80 + "\n")
+    
+    return result.wasSuccessful()
+
+
+if __name__ == "__main__":
+    run_tests()
+
+"""
+Classe Transaction pour gérer l'historique des opérations
+"""
+from datetime import datetime
+from typing import Dict
+
+
+class Transaction:
+    """Représente une transaction bancaire avec horodatage"""
+    
+    def __init__(self, type_transaction: str, montant: float, 
+                 solde_avant: float, solde_apres: float, 
+                 description: str = ""):
+        self.type_transaction = type_transaction
+        self.montant = montant
+        self.solde_avant = solde_avant
+        self.solde_apres = solde_apres
+        self.description = description
+        self.date = datetime.now()
+    
+    def to_dict(self) -> Dict:
+        """Convertit la transaction en dictionnaire pour la sérialisation"""
+        return {
+            'type': self.type_transaction,
+            'montant': self.montant,
+            'solde_avant': self.solde_avant,
+            'solde_apres': self.solde_apres,
+            'description': self.description,
+            'date': self.date.isoformat()
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'Transaction':
+        """Crée une transaction à partir d'un dictionnaire"""
+        transaction = cls(
+            type_transaction=data['type'],
+            montant=data['montant'],
+            solde_avant=data['solde_avant'],
+            solde_apres=data['solde_apres'],
+            description=data['description']
+        )
+        transaction.date = datetime.fromisoformat(data['date'])
+        return transaction
+    
+    def __str__(self) -> str:
+        """Représentation textuelle de la transaction"""
+        date_str = self.date.strftime("%d/%m/%Y %H:%M:%S")
+        return (f"[{date_str}] {self.type_transaction} : {self.montant:+.2f}€ "
+                f"(Solde : {self.solde_avant:.2f}€ → {self.solde_apres:.2f}€) "
+                f"- {self.description}")
