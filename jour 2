@@ -1,0 +1,673 @@
+"""
+Tableau de bord multi-graphiques pour l'analyse du dataset Iris
+avec matplotlib et seaborn
+"""
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.animation import FuncAnimation
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+
+# Configuration du style
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+
+class DashboardIris:
+    """Tableau de bord d'analyse visuelle du dataset Iris"""
+    
+    def __init__(self, csv_file='iris_dataset.csv'):
+        """Charge le dataset et configure les graphiques"""
+        self.df = pd.read_csv(csv_file)
+        self.colonnes_numeriques = [col for col in self.df.select_dtypes(include=[np.number]).columns 
+                                     if 'code' not in col.lower()]
+        
+        # Configuration des couleurs par espèce
+        self.couleurs_especes = {
+            'setosa': '#FF6B6B',
+            'versicolor': '#4ECDC4',
+            'virginica': '#45B7D1'
+        }
+    
+    def creer_dashboard_principal(self):
+        """Crée le tableau de bord principal avec subplot 2x2"""
+        print("📊 Création du tableau de bord principal...")
+        
+        # Créer la figure avec 4 subplots (2x2)
+        fig = plt.figure(figsize=(16, 12))
+        fig.suptitle('🌸 TABLEAU DE BORD IRIS - ANALYSE MULTI-GRAPHIQUES 🌸', 
+                     fontsize=20, fontweight='bold', y=0.98)
+        
+        # Subplot 1: Histogramme
+        ax1 = plt.subplot(2, 2, 1)
+        self._creer_histogramme(ax1)
+        
+        # Subplot 2: Scatter plot avec régression
+        ax2 = plt.subplot(2, 2, 2)
+        self._creer_scatter_regression(ax2)
+        
+        # Subplot 3: Heatmap de corrélation
+        ax3 = plt.subplot(2, 2, 3)
+        self._creer_heatmap_correlation(ax3)
+        
+        # Subplot 4: Box plot des distributions
+        ax4 = plt.subplot(2, 2, 4)
+        self._creer_boxplot(ax4)
+        
+        # Ajuster les espacements
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        
+        # Sauvegarder
+        fichier = 'dashboard_iris_principal.png'
+        plt.savefig(fichier, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"✅ Dashboard principal sauvegardé : {fichier}")
+        
+        plt.show()
+        return fig
+    
+    def _creer_histogramme(self, ax):
+        """Crée un histogramme des longueurs de pétales par espèce"""
+        for espece in self.df['species'].unique():
+            data = self.df[self.df['species'] == espece]['petal length (cm)']
+            ax.hist(data, alpha=0.6, bins=15, 
+                   label=espece.capitalize(),
+                   color=self.couleurs_especes[espece],
+                   edgecolor='black', linewidth=1.2)
+        
+        # Ajouter une ligne verticale pour la moyenne globale
+        moyenne = self.df['petal length (cm)'].mean()
+        ax.axvline(moyenne, color='red', linestyle='--', linewidth=2, 
+                  label=f'Moyenne globale: {moyenne:.2f} cm')
+        
+        ax.set_title('📊 Distribution des Longueurs de Pétales', 
+                    fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Longueur du pétale (cm)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Fréquence', fontsize=11, fontweight='bold')
+        ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # Annotations statistiques
+        ax.text(0.05, 0.95, f'n = {len(self.df)} observations', 
+               transform=ax.transAxes, fontsize=9, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    def _creer_scatter_regression(self, ax):
+        """Crée un scatter plot avec ligne de régression"""
+        # Données
+        x = self.df['petal length (cm)']
+        y = self.df['petal width (cm)']
+        
+        # Scatter plot par espèce
+        for espece in self.df['species'].unique():
+            mask = self.df['species'] == espece
+            ax.scatter(x[mask], y[mask], 
+                      alpha=0.7, s=100,
+                      label=espece.capitalize(),
+                      color=self.couleurs_especes[espece],
+                      edgecolors='black', linewidth=1)
+        
+        # Ligne de régression
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+        line = slope * x + intercept
+        ax.plot(x, line, 'r-', linewidth=2.5, label=f'Régression linéaire')
+        
+        # Équation de régression et R²
+        equation = f'y = {slope:.2f}x + {intercept:.2f}'
+        r2 = r_value**2
+        
+        ax.text(0.05, 0.95, f'{equation}\nR² = {r2:.4f}\np-value < 0.001', 
+               transform=ax.transAxes, fontsize=10, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+        
+        ax.set_title('📈 Régression: Longueur vs Largeur des Pétales', 
+                    fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Longueur du pétale (cm)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Largeur du pétale (cm)', fontsize=11, fontweight='bold')
+        ax.legend(loc='lower right', fontsize=9, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+    
+    def _creer_heatmap_correlation(self, ax):
+        """Crée une heatmap de corrélation"""
+        # Matrice de corrélation
+        corr_matrix = self.df[self.colonnes_numeriques].corr()
+        
+        # Heatmap
+        sns.heatmap(corr_matrix, annot=True, fmt='.3f', 
+                   cmap='coolwarm', center=0,
+                   square=True, linewidths=2, 
+                   cbar_kws={"shrink": 0.8, "label": "Coefficient de corrélation"},
+                   annot_kws={'fontsize': 10, 'fontweight': 'bold'},
+                   ax=ax, vmin=-1, vmax=1)
+        
+        ax.set_title('🔥 Heatmap des Corrélations', 
+                    fontsize=14, fontweight='bold', pad=15)
+        
+        # Améliorer la lisibilité des labels
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right', fontsize=9)
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=9)
+        
+        # Annotation supplémentaire
+        ax.text(0.5, -0.15, 'Plus proche de ±1 = corrélation forte', 
+               transform=ax.transAxes, fontsize=9, 
+               ha='center', style='italic')
+    
+    def _creer_boxplot(self, ax):
+        """Crée un box plot des distributions"""
+        # Préparer les données en format long
+        data_melted = self.df[self.colonnes_numeriques].melt(var_name='Variable', 
+                                                               value_name='Valeur')
+        
+        # Box plot avec seaborn
+        sns.boxplot(data=data_melted, x='Variable', y='Valeur', 
+                   palette='Set2', ax=ax, linewidth=2)
+        
+        # Ajouter des points pour les valeurs individuelles
+        sns.stripplot(data=data_melted, x='Variable', y='Valeur', 
+                     color='black', alpha=0.3, size=3, ax=ax)
+        
+        ax.set_title('📦 Box Plots - Distributions des Variables', 
+                    fontsize=14, fontweight='bold', pad=15)
+        ax.set_xlabel('Variables', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Valeur (cm)', fontsize=11, fontweight='bold')
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right', fontsize=9)
+        ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+        
+        # Annotations pour les quartiles
+        for i, col in enumerate(self.colonnes_numeriques):
+            q1 = self.df[col].quantile(0.25)
+            q3 = self.df[col].quantile(0.75)
+            median = self.df[col].median()
+            
+            # Ne pas surcharger, annoter seulement quelques valeurs
+            if i == 0:  # Première variable seulement
+                ax.text(i, q3, f'Q3: {q3:.1f}', fontsize=7, ha='center', 
+                       bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.5))
+    
+    def creer_graphique_anime(self, fichier='animation_iris.gif'):
+        """Crée un graphique en courbe animé"""
+        print("🎬 Création de l'animation...")
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        # Données pour l'animation - évolution des moyennes par espèce
+        especes = self.df['species'].unique()
+        variables = self.colonnes_numeriques
+        
+        # Initialisation
+        lines = {}
+        for espece in especes:
+            line, = ax.plot([], [], 'o-', linewidth=3, markersize=10, 
+                           label=espece.capitalize(), 
+                           color=self.couleurs_especes[espece])
+            lines[espece] = line
+        
+        ax.set_xlim(-0.5, len(variables)-0.5)
+        ax.set_ylim(0, 7)
+        ax.set_xticks(range(len(variables)))
+        ax.set_xticklabels([v.replace(' (cm)', '') for v in variables], 
+                          rotation=45, ha='right', fontsize=10)
+        ax.set_ylabel('Valeur moyenne (cm)', fontsize=12, fontweight='bold')
+        ax.set_title('🎬 Animation: Moyennes des Variables par Espèce', 
+                    fontsize=15, fontweight='bold', pad=20)
+        ax.legend(loc='upper left', fontsize=11, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # Fonction d'animation
+        def animate(frame):
+            # Afficher progressivement les variables
+            num_vars = min(frame + 1, len(variables))
+            
+            for espece in especes:
+                df_espece = self.df[self.df['species'] == espece]
+                moyennes = [df_espece[var].mean() for var in variables[:num_vars]]
+                
+                x = list(range(num_vars))
+                lines[espece].set_data(x, moyennes)
+            
+            # Mettre à jour le titre avec le nombre de variables affichées
+            ax.set_title(f'🎬 Animation: Moyennes des Variables par Espèce (Variables: {num_vars}/{len(variables)})', 
+                        fontsize=15, fontweight='bold', pad=20)
+            
+            return list(lines.values())
+        
+        # Créer l'animation
+        anim = FuncAnimation(fig, animate, frames=len(variables)+10, 
+                           interval=500, blit=True, repeat=True)
+        
+        # Sauvegarder
+        try:
+            anim.save(fichier, writer='pillow', fps=2, dpi=150)
+            print(f"✅ Animation sauvegardée : {fichier}")
+        except Exception as e:
+            print(f"⚠️ Impossible de sauvegarder l'animation : {e}")
+            fichier_png = 'animation_iris_static.png'
+            plt.savefig(fichier_png, dpi=150, bbox_inches='tight')
+            print(f"✅ Version statique sauvegardée : {fichier_png}")
+        
+        plt.close()
+        return fig
+    
+    def creer_graphiques_supplementaires(self):
+        """Crée des graphiques supplémentaires détaillés"""
+        print("📊 Création de graphiques supplémentaires...")
+        
+        # Figure avec plusieurs graphiques
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        fig.suptitle('🌸 ANALYSES SUPPLÉMENTAIRES - DATASET IRIS 🌸', 
+                     fontsize=18, fontweight='bold', y=0.98)
+        
+        # 1. Violin plot
+        ax1 = axes[0, 0]
+        data_melted = self.df.melt(id_vars=['species'], 
+                                   value_vars=self.colonnes_numeriques,
+                                   var_name='Variable', value_name='Valeur')
+        sns.violinplot(data=data_melted[data_melted['Variable'] == 'petal length (cm)'], 
+                      x='species', y='Valeur', palette='muted', ax=ax1)
+        ax1.set_title('🎻 Violin Plot - Longueur des Pétales', 
+                     fontsize=13, fontweight='bold')
+        ax1.set_xlabel('Espèce', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('Longueur (cm)', fontsize=11, fontweight='bold')
+        
+        # 2. Pair plot style - sélection de 2 variables
+        ax2 = axes[0, 1]
+        for espece in self.df['species'].unique():
+            mask = self.df['species'] == espece
+            ax2.scatter(self.df[mask]['sepal length (cm)'], 
+                       self.df[mask]['sepal width (cm)'],
+                       alpha=0.6, s=100, label=espece.capitalize(),
+                       color=self.couleurs_especes[espece],
+                       edgecolors='black')
+        ax2.set_title('🌺 Sépales: Longueur vs Largeur', 
+                     fontsize=13, fontweight='bold')
+        ax2.set_xlabel('Longueur du sépale (cm)', fontsize=11, fontweight='bold')
+        ax2.set_ylabel('Largeur du sépale (cm)', fontsize=11, fontweight='bold')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # 3. KDE plot
+        ax3 = axes[1, 0]
+        for espece in self.df['species'].unique():
+            data = self.df[self.df['species'] == espece]['petal width (cm)']
+            data.plot(kind='kde', ax=ax3, label=espece.capitalize(), 
+                     linewidth=2.5, color=self.couleurs_especes[espece])
+        ax3.set_title('📉 Densité de Probabilité - Largeur des Pétales', 
+                     fontsize=13, fontweight='bold')
+        ax3.set_xlabel('Largeur du pétale (cm)', fontsize=11, fontweight='bold')
+        ax3.set_ylabel('Densité', fontsize=11, fontweight='bold')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        
+        # 4. Bar plot des moyennes
+        ax4 = axes[1, 1]
+        moyennes = self.df.groupby('species')[self.colonnes_numeriques].mean()
+        moyennes.plot(kind='bar', ax=ax4, rot=0, width=0.8, 
+                     color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A'])
+        ax4.set_title('📊 Moyennes par Espèce', fontsize=13, fontweight='bold')
+        ax4.set_xlabel('Espèce', fontsize=11, fontweight='bold')
+        ax4.set_ylabel('Valeur moyenne (cm)', fontsize=11, fontweight='bold')
+        ax4.legend([col.replace(' (cm)', '') for col in self.colonnes_numeriques], 
+                  loc='upper left', fontsize=9)
+        ax4.grid(True, alpha=0.3, axis='y')
+        
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        
+        fichier = 'dashboard_iris_supplementaire.png'
+        plt.savefig(fichier, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"✅ Graphiques supplémentaires sauvegardés : {fichier}")
+        
+        plt.show()
+
+
+if __name__ == "__main__":
+    # Créer le dashboard
+    dashboard = DashboardIris()
+    
+    # Dashboard principal (subplot 2x2)
+    dashboard.creer_dashboard_principal()
+    
+    # Graphique animé
+    dashboard.creer_graphique_anime()
+    
+    # Graphiques supplémentaires
+    dashboard.creer_graphiques_supplementaires()
+    
+    print("\n✅ Tous les graphiques ont été générés avec succès !")
+
+"""
+Script pour télécharger et préparer le jeu de données Iris
+"""
+import pandas as pd
+from sklearn.datasets import load_iris
+import os
+
+def download_iris_dataset():
+    """Télécharge le jeu de données Iris depuis sklearn"""
+    print("📥 Téléchargement du jeu de données Iris...")
+    
+    # Charger le dataset Iris
+    iris = load_iris()
+    
+    # Créer un DataFrame pandas
+    df = pd.DataFrame(
+        data=iris.data,
+        columns=iris.feature_names
+    )
+    
+    # Ajouter la colonne target (espèces)
+    df['species'] = pd.Categorical.from_codes(iris.target, iris.target_names)
+    df['species_code'] = iris.target
+    
+    # Sauvegarder en CSV
+    csv_path = 'iris_dataset.csv'
+    df.to_csv(csv_path, index=False)
+    
+    print(f"✅ Dataset Iris téléchargé : {csv_path}")
+    print(f"📊 Dimensions : {df.shape[0]} lignes, {df.shape[1]} colonnes")
+    print(f"\n📋 Colonnes disponibles :")
+    for col in df.columns:
+        print(f"   • {col}")
+    
+    print(f"\n🌸 Espèces : {list(df['species'].unique())}")
+    
+    return df
+
+if __name__ == "__main__":
+    df = download_iris_dataset()
+    print("\n" + "="*80)
+    print("APERÇU DES DONNÉES")
+    print("="*80)
+    print(df.head(10))
+    print("\n" + "="*80)
+    print("INFORMATIONS SUR LE DATASET")
+    print("="*80)
+    print(df.info())
+
+"""
+Script principal - Analyse complète du dataset Iris
+Génère statistiques et visualisations
+"""
+import sys
+import os
+
+# Ajouter le répertoire courant au path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from statistiques import StatistiquesDescriptives
+from dashboard import DashboardIris
+import pandas as pd
+
+
+def main():
+    """Fonction principale d'exécution"""
+    print("="*100)
+    print("🌸 ANALYSE COMPLÈTE DU DATASET IRIS 🌸".center(100))
+    print("="*100)
+    print("\nProjet: Tableau de bord multi-graphiques avec statistiques descriptives")
+    print("Bibliothèques: matplotlib, seaborn, numpy, pandas")
+    print("Dataset: Iris (150 observations, 3 espèces)")
+    print("="*100 + "\n")
+    
+    # Vérifier l'existence du dataset
+    if not os.path.exists('iris_dataset.csv'):
+        print("❌ Dataset non trouvé. Téléchargement...")
+        import download_iris
+        download_iris.download_iris_dataset()
+    
+    # Charger les données
+    print("\n📂 Chargement des données...")
+    df = pd.read_csv('iris_dataset.csv')
+    print(f"✅ Dataset chargé : {df.shape[0]} lignes, {df.shape[1]} colonnes\n")
+    
+    # ÉTAPE 1: Statistiques descriptives
+    print("\n" + "="*100)
+    print("ÉTAPE 1/3 : CALCUL DES STATISTIQUES DESCRIPTIVES".center(100))
+    print("="*100)
+    
+    statistiques = StatistiquesDescriptives(df)
+    statistiques.afficher_statistiques()
+    statistiques.statistiques_par_espece()
+    statistiques.generer_rapport_texte('rapport_statistiques_iris.txt')
+    
+    # Afficher le tableau récapitulatif
+    print("\n" + "="*100)
+    print("📊 TABLEAU RÉCAPITULATIF DES STATISTIQUES")
+    print("="*100)
+    stats_df = statistiques.creer_dataframe_stats()
+    print(stats_df.to_string())
+    stats_df.to_csv('statistiques_resumees.csv')
+    print("\n✅ Statistiques sauvegardées : statistiques_resumees.csv")
+    
+    # ÉTAPE 2: Création des visualisations
+    print("\n" + "="*100)
+    print("ÉTAPE 2/3 : CRÉATION DES VISUALISATIONS".center(100))
+    print("="*100 + "\n")
+    
+    dashboard = DashboardIris()
+    
+    # Dashboard principal avec subplot 2x2
+    print("📊 Génération du tableau de bord principal (subplot 2x2)...")
+    print("   • Histogramme des longueurs de pétales")
+    print("   • Scatter plot avec régression linéaire")
+    print("   • Heatmap de corrélation")
+    print("   • Box plots des distributions\n")
+    dashboard.creer_dashboard_principal()
+    
+    # Graphiques supplémentaires
+    print("\n📊 Génération des graphiques supplémentaires...")
+    dashboard.creer_graphiques_supplementaires()
+    
+    # Animation
+    print("\n🎬 Génération de l'animation...")
+    dashboard.creer_graphique_anime()
+    
+    # ÉTAPE 3: Résumé final
+    print("\n" + "="*100)
+    print("ÉTAPE 3/3 : RÉSUMÉ ET FICHIERS GÉNÉRÉS".center(100))
+    print("="*100 + "\n")
+    
+    fichiers_generes = [
+        ('iris_dataset.csv', 'Dataset Iris au format CSV'),
+        ('rapport_statistiques_iris.txt', 'Rapport statistique détaillé'),
+        ('statistiques_resumees.csv', 'Tableau récapitulatif des statistiques'),
+        ('dashboard_iris_principal.png', 'Dashboard principal (2x2 subplots)'),
+        ('dashboard_iris_supplementaire.png', 'Graphiques supplémentaires'),
+        ('animation_iris.gif', 'Animation des moyennes par espèce (ou version statique)'),
+    ]
+    
+    print("📁 FICHIERS GÉNÉRÉS:")
+    print("─"*100)
+    for fichier, description in fichiers_generes:
+        if os.path.exists(fichier):
+            taille = os.path.getsize(fichier) / 1024  # Ko
+            print(f"  ✅ {fichier:45s} | {description:40s} | {taille:>8.2f} Ko")
+        else:
+            print(f"  ⚠️  {fichier:45s} | {description:40s} | Non généré")
+    
+    print("\n" + "="*100)
+    print("✅ ANALYSE COMPLÈTE TERMINÉE AVEC SUCCÈS".center(100))
+    print("="*100)
+    
+    print("\n📊 STATISTIQUES CLÉS:")
+    print("─"*100)
+    print(f"  • Nombre d'observations          : {len(df)}")
+    print(f"  • Nombre de variables numériques : {len([col for col in df.select_dtypes(include=['number']).columns if 'code' not in col.lower()])}")
+    print(f"  • Nombre d'espèces               : {df['species'].nunique()}")
+    print(f"  • Espèces                        : {', '.join(df['species'].unique())}")
+    
+    print("\n📈 STATISTIQUES PRINCIPALES:")
+    print("─"*100)
+    for col in ['sepal length (cm)', 'petal length (cm)']:
+        print(f"\n  {col}:")
+        print(f"    - Moyenne    : {df[col].mean():.3f} cm")
+        print(f"    - Médiane    : {df[col].median():.3f} cm")
+        print(f"    - Écart-type : {df[col].std():.3f} cm")
+        print(f"    - Q1         : {df[col].quantile(0.25):.3f} cm")
+        print(f"    - Q3         : {df[col].quantile(0.75):.3f} cm")
+    
+    print("\n" + "="*100)
+    print("🎉 Projet terminé ! Consultez les fichiers PNG pour voir les visualisations. 🎉".center(100))
+    print("="*100 + "\n")
+
+
+if __name__ == "__main__":
+    main()
+
+"""
+Module de calcul des statistiques descriptives pour le dataset Iris
+"""
+import pandas as pd
+import numpy as np
+
+
+class StatistiquesDescriptives:
+    """Calcule et affiche les statistiques descriptives du dataset Iris"""
+    
+    def __init__(self, df):
+        """
+        Initialise avec un DataFrame
+        
+        Args:
+            df: DataFrame pandas contenant les données Iris
+        """
+        self.df = df
+        self.colonnes_numeriques = df.select_dtypes(include=[np.number]).columns.tolist()
+        # Exclure la colonne species_code si présente
+        self.colonnes_numeriques = [col for col in self.colonnes_numeriques if 'code' not in col.lower()]
+    
+    def calculer_statistiques(self):
+        """Calcule toutes les statistiques descriptives"""
+        stats = {}
+        
+        for col in self.colonnes_numeriques:
+            stats[col] = {
+                'moyenne': np.mean(self.df[col]),
+                'mediane': np.median(self.df[col]),
+                'ecart_type': np.std(self.df[col], ddof=1),  # ddof=1 pour échantillon
+                'variance': np.var(self.df[col], ddof=1),
+                'Q1': np.percentile(self.df[col], 25),
+                'Q2': np.percentile(self.df[col], 50),  # Médiane
+                'Q3': np.percentile(self.df[col], 75),
+                'IQR': np.percentile(self.df[col], 75) - np.percentile(self.df[col], 25),
+                'min': np.min(self.df[col]),
+                'max': np.max(self.df[col]),
+                'etendue': np.max(self.df[col]) - np.min(self.df[col])
+            }
+        
+        return stats
+    
+    def afficher_statistiques(self):
+        """Affiche les statistiques de manière formatée"""
+        stats = self.calculer_statistiques()
+        
+        print("\n" + "="*100)
+        print("📊 STATISTIQUES DESCRIPTIVES DU DATASET IRIS".center(100))
+        print("="*100)
+        
+        for col in self.colonnes_numeriques:
+            print(f"\n🌸 {col.upper()}")
+            print("─"*100)
+            
+            s = stats[col]
+            
+            # Mesures de tendance centrale
+            print(f"  📈 TENDANCE CENTRALE")
+            print(f"     • Moyenne          : {s['moyenne']:.4f}")
+            print(f"     • Médiane (Q2)     : {s['mediane']:.4f}")
+            
+            # Mesures de dispersion
+            print(f"\n  📊 DISPERSION")
+            print(f"     • Écart-type       : {s['ecart_type']:.4f}")
+            print(f"     • Variance         : {s['variance']:.4f}")
+            print(f"     • Étendue          : {s['etendue']:.4f}")
+            print(f"     • IQR (Q3-Q1)      : {s['IQR']:.4f}")
+            
+            # Quartiles
+            print(f"\n  📏 QUARTILES")
+            print(f"     • Minimum          : {s['min']:.4f}")
+            print(f"     • Q1 (25%)         : {s['Q1']:.4f}")
+            print(f"     • Q2 (50% - Médiane): {s['Q2']:.4f}")
+            print(f"     • Q3 (75%)         : {s['Q3']:.4f}")
+            print(f"     • Maximum          : {s['max']:.4f}")
+        
+        print("\n" + "="*100)
+    
+    def statistiques_par_espece(self):
+        """Calcule les statistiques par espèce"""
+        print("\n" + "="*100)
+        print("📊 STATISTIQUES PAR ESPÈCE".center(100))
+        print("="*100)
+        
+        for espece in self.df['species'].unique():
+            df_espece = self.df[self.df['species'] == espece]
+            
+            print(f"\n🌸 {espece.upper()}")
+            print("─"*100)
+            
+            for col in self.colonnes_numeriques:
+                moyenne = df_espece[col].mean()
+                ecart_type = df_espece[col].std()
+                print(f"  • {col:25s} : Moyenne = {moyenne:6.3f}  |  Écart-type = {ecart_type:6.3f}")
+        
+        print("\n" + "="*100)
+    
+    def generer_rapport_texte(self, fichier='statistiques_iris.txt'):
+        """Génère un rapport texte des statistiques"""
+        stats = self.calculer_statistiques()
+        
+        with open(fichier, 'w', encoding='utf-8') as f:
+            f.write("="*100 + "\n")
+            f.write("RAPPORT STATISTIQUE - DATASET IRIS\n")
+            f.write("="*100 + "\n\n")
+            
+            f.write(f"Dataset : {self.df.shape[0]} observations, {len(self.colonnes_numeriques)} variables numériques\n")
+            f.write(f"Espèces : {', '.join([str(x) for x in self.df['species'].unique()])}\n\n")
+            
+            for col in self.colonnes_numeriques:
+                f.write(f"\n{col.upper()}\n")
+                f.write("-"*100 + "\n")
+                
+                s = stats[col]
+                
+                f.write(f"Moyenne          : {s['moyenne']:.4f}\n")
+                f.write(f"Médiane          : {s['mediane']:.4f}\n")
+                f.write(f"Écart-type       : {s['ecart_type']:.4f}\n")
+                f.write(f"Variance         : {s['variance']:.4f}\n")
+                f.write(f"Q1               : {s['Q1']:.4f}\n")
+                f.write(f"Q2 (Médiane)     : {s['Q2']:.4f}\n")
+                f.write(f"Q3               : {s['Q3']:.4f}\n")
+                f.write(f"IQR              : {s['IQR']:.4f}\n")
+                f.write(f"Min              : {s['min']:.4f}\n")
+                f.write(f"Max              : {s['max']:.4f}\n")
+                f.write(f"Étendue          : {s['etendue']:.4f}\n")
+            
+            f.write("\n" + "="*100 + "\n")
+        
+        print(f"✅ Rapport statistique sauvegardé : {fichier}")
+    
+    def creer_dataframe_stats(self):
+        """Crée un DataFrame avec toutes les statistiques"""
+        stats = self.calculer_statistiques()
+        
+        # Créer un DataFrame pour une vue tabulaire
+        stats_df = pd.DataFrame(stats).T
+        stats_df.index.name = 'Variable'
+        
+        return stats_df
+
+
+if __name__ == "__main__":
+    # Test du module
+    df = pd.read_csv('iris_dataset.csv')
+    
+    statistiques = StatistiquesDescriptives(df)
+    statistiques.afficher_statistiques()
+    statistiques.statistiques_par_espece()
+    statistiques.generer_rapport_texte()
+    
+    # Afficher le DataFrame des stats
+    print("\n" + "="*100)
+    print("TABLEAU RÉCAPITULATIF DES STATISTIQUES")
+    print("="*100)
+    print(statistiques.creer_dataframe_stats())
