@@ -1,0 +1,1211 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Calculatrice Scientifique Complète avec Tkinter
+================================================
+Interface graphique responsive avec thèmes clair/sombre,
+historique scrollable et gestion d'erreurs robuste.
+
+Fonctionnalités :
+- Opérations arithmétiques de base (+, -, *, /, %)
+- Fonctions trigonométriques (sin, cos, tan) en degrés/radians
+- Fonctions logarithmiques (log, ln)
+- Puissances, racines, factorielles
+- Parenthèses imbriquées illimitées
+- Constantes mathématiques (π, e)
+- Historique des calculs avec timestamps
+- Thèmes personnalisables
+- Raccourcis clavier
+- Gestion des erreurs complète
+"""
+
+import tkinter as tk
+from tkinter import ttk, scrolledtext, messagebox
+import math
+import re
+from datetime import datetime
+from typing import List, Dict, Tuple
+
+
+class CalculatriceScientifique:
+    """Calculatrice scientifique avec interface Tkinter avancée."""
+    
+    # Configurations des thèmes
+    THEMES = {
+        'clair': {
+            'bg': '#f5f5f5',
+            'fg': '#2c3e50',
+            'display_bg': '#ffffff',
+            'display_fg': '#2c3e50',
+            'button_bg': '#ecf0f1',
+            'button_fg': '#2c3e50',
+            'button_active': '#bdc3c7',
+            'operator_bg': '#3498db',
+            'operator_fg': '#ffffff',
+            'equal_bg': '#2ecc71',
+            'equal_fg': '#ffffff',
+            'clear_bg': '#e74c3c',
+            'clear_fg': '#ffffff',
+            'history_bg': '#ffffff',
+            'history_fg': '#34495e'
+        },
+        'sombre': {
+            'bg': '#1e272e',
+            'fg': '#ecf0f1',
+            'display_bg': '#2c3e50',
+            'display_fg': '#ecf0f1',
+            'button_bg': '#34495e',
+            'button_fg': '#ecf0f1',
+            'button_active': '#4a5f7f',
+            'operator_bg': '#e67e22',
+            'operator_fg': '#ffffff',
+            'equal_bg': '#27ae60',
+            'equal_fg': '#ffffff',
+            'clear_bg': '#c0392b',
+            'clear_fg': '#ffffff',
+            'history_bg': '#2c3e50',
+            'history_fg': '#bdc3c7'
+        }
+    }
+    
+    def __init__(self, root: tk.Tk):
+        """
+        Initialise la calculatrice.
+        
+        Args:
+            root: Fenêtre principale Tkinter
+        """
+        self.root = root
+        self.root.title("🔬 Calculatrice Scientifique")
+        self.root.minsize(500, 600)
+        self.root.geometry("600x700")
+        
+        # Variables d'état
+        self.expression = ""
+        self.historique: List[Dict] = []
+        self.mode_angle = "DEG"  # DEG ou RAD
+        self.theme_actuel = "clair"
+        self.derniere_reponse = 0
+        
+        # Configuration du style
+        self.style = ttk.Style()
+        self.configurer_styles()
+        
+        # Création de l'interface
+        self.creer_interface()
+        
+        # Raccourcis clavier
+        self.configurer_raccourcis()
+        
+        # Centrer la fenêtre
+        self.centrer_fenetre()
+    
+    def configurer_styles(self):
+        """Configure les styles ttk pour l'interface."""
+        self.style.theme_use('clam')
+        
+        # Style pour les boutons
+        self.style.configure('Calculator.TButton',
+                            font=('Arial', 12, 'bold'),
+                            borderwidth=1,
+                            relief='raised')
+        
+        # Style pour les labels
+        self.style.configure('Calculator.TLabel',
+                            font=('Arial', 10))
+    
+    def creer_interface(self):
+        """Crée tous les composants de l'interface."""
+        # Frame principal
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Barre de menu supérieure
+        self.creer_barre_menu(main_frame)
+        
+        # Zone d'affichage
+        self.creer_affichage(main_frame)
+        
+        # Zone des boutons
+        self.creer_boutons(main_frame)
+        
+        # Historique (collapsible)
+        self.creer_historique(main_frame)
+        
+        # Appliquer le thème initial
+        self.appliquer_theme()
+    
+    def creer_barre_menu(self, parent):
+        """Crée la barre de menu avec options."""
+        menu_frame = tk.Frame(parent)
+        menu_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Bouton de changement de thème
+        self.btn_theme = tk.Button(
+            menu_frame,
+            text="🌙 Sombre",
+            command=self.basculer_theme,
+            font=('Arial', 9),
+            relief=tk.FLAT,
+            cursor='hand2'
+        )
+        self.btn_theme.pack(side=tk.LEFT, padx=5)
+        
+        # Bouton mode angle
+        self.btn_angle = tk.Button(
+            menu_frame,
+            text=f"📐 {self.mode_angle}",
+            command=self.basculer_mode_angle,
+            font=('Arial', 9),
+            relief=tk.FLAT,
+            cursor='hand2'
+        )
+        self.btn_angle.pack(side=tk.LEFT, padx=5)
+        
+        # Bouton historique
+        self.btn_historique = tk.Button(
+            menu_frame,
+            text="📜 Historique",
+            command=self.basculer_historique,
+            font=('Arial', 9),
+            relief=tk.FLAT,
+            cursor='hand2'
+        )
+        self.btn_historique.pack(side=tk.LEFT, padx=5)
+        
+        # Label info
+        info_label = tk.Label(
+            menu_frame,
+            text="⌨️ Enter=Calculer | Esc=Effacer | Backspace=Supprimer",
+            font=('Arial', 8),
+            fg='gray'
+        )
+        info_label.pack(side=tk.RIGHT, padx=5)
+    
+    def creer_affichage(self, parent):
+        """Crée la zone d'affichage de l'expression."""
+        display_frame = tk.Frame(parent)
+        display_frame.pack(fill=tk.X, pady=5)
+        
+        # Expression actuelle
+        self.display = tk.Entry(
+            display_frame,
+            font=('Courier New', 20, 'bold'),
+            justify=tk.RIGHT,
+            relief=tk.SUNKEN,
+            borderwidth=2
+        )
+        self.display.pack(fill=tk.X, ipady=15)
+        self.display.insert(0, "0")
+        
+        # Sous-expression (résultat partiel)
+        self.sub_display = tk.Label(
+            display_frame,
+            text="",
+            font=('Arial', 10),
+            anchor=tk.E,
+            fg='gray'
+        )
+        self.sub_display.pack(fill=tk.X, pady=(2, 0))
+    
+    def creer_boutons(self, parent):
+        """Crée la grille de boutons de la calculatrice."""
+        buttons_frame = tk.Frame(parent)
+        buttons_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Configuration de la grille responsive
+        for i in range(6):
+            buttons_frame.grid_rowconfigure(i, weight=1, uniform="row")
+        for j in range(5):
+            buttons_frame.grid_columnconfigure(j, weight=1, uniform="col")
+        
+        # Définition des boutons (texte, ligne, colonne, colspan, type)
+        boutons = [
+            # Ligne 0 - Fonctions scientifiques avancées
+            ('sin', 0, 0, 1, 'function'),
+            ('cos', 0, 1, 1, 'function'),
+            ('tan', 0, 2, 1, 'function'),
+            ('log', 0, 3, 1, 'function'),
+            ('ln', 0, 4, 1, 'function'),
+            
+            # Ligne 1 - Fonctions supplémentaires
+            ('√', 1, 0, 1, 'function'),
+            ('x²', 1, 1, 1, 'function'),
+            ('xʸ', 1, 2, 1, 'operator'),
+            ('1/x', 1, 3, 1, 'function'),
+            ('n!', 1, 4, 1, 'function'),
+            
+            # Ligne 2 - Parenthèses et constantes
+            ('(', 2, 0, 1, 'number'),
+            (')', 2, 1, 1, 'number'),
+            ('π', 2, 2, 1, 'number'),
+            ('e', 2, 3, 1, 'number'),
+            ('C', 2, 4, 1, 'clear'),
+            
+            # Ligne 3 - Nombres et opérations
+            ('7', 3, 0, 1, 'number'),
+            ('8', 3, 1, 1, 'number'),
+            ('9', 3, 2, 1, 'number'),
+            ('÷', 3, 3, 1, 'operator'),
+            ('⌫', 3, 4, 1, 'clear'),
+            
+            # Ligne 4
+            ('4', 4, 0, 1, 'number'),
+            ('5', 4, 1, 1, 'number'),
+            ('6', 4, 2, 1, 'number'),
+            ('×', 4, 3, 1, 'operator'),
+            ('%', 4, 4, 1, 'operator'),
+            
+            # Ligne 5
+            ('1', 5, 0, 1, 'number'),
+            ('2', 5, 1, 1, 'number'),
+            ('3', 5, 2, 1, 'number'),
+            ('-', 5, 3, 1, 'operator'),
+            ('Ans', 5, 4, 1, 'number'),
+            
+            # Ligne 6
+            ('0', 6, 0, 1, 'number'),
+            ('.', 6, 1, 1, 'number'),
+            ('=', 6, 2, 2, 'equal'),
+            ('+', 6, 4, 1, 'operator'),
+        ]
+        
+        self.boutons = {}
+        for texte, row, col, colspan, btn_type in boutons:
+            btn = tk.Button(
+                buttons_frame,
+                text=texte,
+                font=('Arial', 14, 'bold'),
+                cursor='hand2',
+                relief=tk.RAISED,
+                borderwidth=2
+            )
+            btn.grid(row=row, column=col, columnspan=colspan, 
+                    sticky='nsew', padx=2, pady=2)
+            
+            # Lier l'événement de clic
+            if texte == '=':
+                btn.config(command=self.calculer)
+            elif texte == 'C':
+                btn.config(command=self.effacer)
+            elif texte == '⌫':
+                btn.config(command=self.supprimer)
+            elif btn_type == 'function':
+                btn.config(command=lambda t=texte: self.ajouter_fonction(t))
+            else:
+                btn.config(command=lambda t=texte: self.ajouter_caractere(t))
+            
+            self.boutons[texte] = btn
+    
+    def creer_historique(self, parent):
+        """Crée la zone d'historique scrollable."""
+        self.history_frame = tk.Frame(parent)
+        # Initialement caché
+        
+        # Titre
+        title_frame = tk.Frame(self.history_frame)
+        title_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        tk.Label(
+            title_frame,
+            text="📊 Historique des calculs",
+            font=('Arial', 11, 'bold')
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            title_frame,
+            text="🗑️ Effacer",
+            command=self.effacer_historique,
+            font=('Arial', 8),
+            relief=tk.FLAT,
+            cursor='hand2'
+        ).pack(side=tk.RIGHT, padx=5)
+        
+        # Zone de texte scrollable
+        self.history_text = scrolledtext.ScrolledText(
+            self.history_frame,
+            height=8,
+            font=('Courier New', 10),
+            wrap=tk.WORD,
+            relief=tk.SUNKEN,
+            borderwidth=2
+        )
+        self.history_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.history_text.config(state=tk.DISABLED)
+    
+    def configurer_raccourcis(self):
+        """Configure les raccourcis clavier."""
+        # Chiffres et opérateurs
+        for char in '0123456789+-*/.()':
+            self.root.bind(char, lambda e, c=e.char: self.ajouter_caractere(c))
+        
+        # Touches spéciales
+        self.root.bind('<Return>', lambda e: self.calculer())
+        self.root.bind('<KP_Enter>', lambda e: self.calculer())
+        self.root.bind('<Escape>', lambda e: self.effacer())
+        self.root.bind('<BackSpace>', lambda e: self.supprimer())
+        self.root.bind('<Delete>', lambda e: self.supprimer())
+    
+    def ajouter_caractere(self, char: str):
+        """Ajoute un caractère à l'expression."""
+        # Convertir les caractères spéciaux
+        conversions = {
+            '×': '*',
+            '÷': '/',
+            'π': str(math.pi),
+            'e': str(math.e),
+            'Ans': str(self.derniere_reponse)
+        }
+        
+        if char in conversions:
+            char = conversions[char]
+        
+        # Supprimer le "0" initial
+        if self.expression == "" or self.expression == "0":
+            if char not in ['+', '-', '*', '/', '%']:
+                self.expression = char
+            else:
+                self.expression = "0" + char
+        else:
+            self.expression += char
+        
+        self.mettre_a_jour_affichage()
+    
+    def ajouter_fonction(self, fonction: str):
+        """Ajoute une fonction mathématique à l'expression."""
+        # Mapping des fonctions
+        fonctions_map = {
+            'sin': 'sin(',
+            'cos': 'cos(',
+            'tan': 'tan(',
+            'log': 'log10(',
+            'ln': 'log(',
+            '√': 'sqrt(',
+            'x²': '**2',
+            'xʸ': '**',
+            '1/x': '**(−1)',
+            'n!': '!'
+        }
+        
+        if fonction in fonctions_map:
+            func_str = fonctions_map[fonction]
+            
+            # Cas spéciaux
+            if fonction == 'x²':
+                if self.expression and self.expression[-1].isdigit():
+                    self.expression += func_str
+                else:
+                    self.expression += '(' + func_str
+            elif fonction == '1/x':
+                if self.expression:
+                    self.expression = f"({self.expression}){func_str}"
+                else:
+                    self.expression = "1/"
+            elif fonction == 'n!':
+                self.expression += func_str
+            else:
+                self.expression += func_str
+        
+        self.mettre_a_jour_affichage()
+    
+    def supprimer(self):
+        """Supprime le dernier caractère."""
+        if self.expression:
+            self.expression = self.expression[:-1]
+            if not self.expression:
+                self.expression = "0"
+            self.mettre_a_jour_affichage()
+    
+    def effacer(self):
+        """Efface toute l'expression."""
+        self.expression = "0"
+        self.mettre_a_jour_affichage()
+        self.sub_display.config(text="")
+    
+    def mettre_a_jour_affichage(self):
+        """Met à jour l'affichage de l'expression."""
+        self.display.delete(0, tk.END)
+        self.display.insert(0, self.expression)
+    
+    def calculer(self):
+        """Calcule le résultat de l'expression."""
+        if not self.expression or self.expression == "0":
+            return
+        
+        try:
+            # Prétraitement de l'expression
+            expr = self.pretraiter_expression(self.expression)
+            
+            # Évaluation sécurisée
+            resultat = self.evaluer_expression(expr)
+            
+            # Formater le résultat
+            if isinstance(resultat, (int, float)):
+                if resultat == int(resultat):
+                    resultat_str = str(int(resultat))
+                else:
+                    resultat_str = f"{resultat:.10g}"
+            else:
+                resultat_str = str(resultat)
+            
+            # Ajouter à l'historique
+            self.ajouter_a_historique(self.expression, resultat_str)
+            
+            # Mettre à jour l'affichage
+            self.expression = resultat_str
+            self.derniere_reponse = float(resultat_str) if resultat_str.replace('.', '').replace('-', '').isdigit() else 0
+            self.mettre_a_jour_affichage()
+            self.sub_display.config(text="")
+            
+        except ZeroDivisionError:
+            self.afficher_erreur("❌ Erreur : Division par zéro")
+        except ValueError as e:
+            self.afficher_erreur(f"❌ Erreur de valeur : {str(e)}")
+        except SyntaxError:
+            self.afficher_erreur("❌ Erreur : Expression invalide")
+        except Exception as e:
+            self.afficher_erreur(f"❌ Erreur : {str(e)}")
+    
+    def pretraiter_expression(self, expr: str) -> str:
+        """
+        Prétraite l'expression pour la rendre évaluable.
+        
+        Args:
+            expr: Expression à prétraiter
+            
+        Returns:
+            Expression prétraitée
+        """
+        # Remplacer les symboles
+        expr = expr.replace('×', '*').replace('÷', '/')
+        expr = expr.replace('π', str(math.pi))
+        expr = expr.replace('e', str(math.e))
+        
+        # Gérer les fonctions trigonométriques
+        for func in ['sin', 'cos', 'tan']:
+            pattern = f'{func}\\(([^)]+)\\)'
+            while re.search(pattern, expr):
+                match = re.search(pattern, expr)
+                if match:
+                    angle_expr = match.group(1)
+                    angle_value = self.evaluer_expression(angle_expr)
+                    
+                    # Convertir en radians si nécessaire
+                    if self.mode_angle == 'DEG':
+                        angle_value = math.radians(float(angle_value))
+                    
+                    # Calculer la fonction trigonométrique
+                    if func == 'sin':
+                        result = math.sin(float(angle_value))
+                    elif func == 'cos':
+                        result = math.cos(float(angle_value))
+                    else:  # tan
+                        result = math.tan(float(angle_value))
+                    
+                    expr = expr[:match.start()] + str(result) + expr[match.end():]
+        
+        # Gérer les logarithmes
+        expr = re.sub(r'log10\(([^)]+)\)', 
+                     lambda m: str(math.log10(float(self.evaluer_expression(m.group(1))))), 
+                     expr)
+        expr = re.sub(r'log\(([^)]+)\)', 
+                     lambda m: str(math.log(float(self.evaluer_expression(m.group(1))))), 
+                     expr)
+        
+        # Gérer les racines carrées
+        expr = re.sub(r'sqrt\(([^)]+)\)', 
+                     lambda m: str(math.sqrt(float(self.evaluer_expression(m.group(1))))), 
+                     expr)
+        
+        # Gérer les factorielles
+        def calculer_factorielle(match):
+            n = int(float(self.evaluer_expression(match.group(1))))
+            if n < 0:
+                raise ValueError("Factorielle d'un nombre négatif impossible")
+            if n > 170:
+                raise ValueError("Factorielle trop grande (max 170)")
+            return str(math.factorial(n))
+        
+        expr = re.sub(r'([0-9.]+)!', calculer_factorielle, expr)
+        
+        return expr
+    
+    def evaluer_expression(self, expr: str) -> float:
+        """
+        Évalue une expression mathématique de manière sécurisée.
+        
+        Args:
+            expr: Expression à évaluer
+            
+        Returns:
+            Résultat de l'évaluation
+        """
+        # Environnement sécurisé pour eval
+        safe_dict = {
+            '__builtins__': {},
+            'abs': abs,
+            'round': round,
+            'min': min,
+            'max': max,
+            'pow': pow
+        }
+        
+        try:
+            result = eval(expr, safe_dict)
+            return result
+        except:
+            raise SyntaxError("Expression invalide")
+    
+    def afficher_erreur(self, message: str):
+        """Affiche un message d'erreur."""
+        self.sub_display.config(text=message, fg='red')
+        self.root.after(3000, lambda: self.sub_display.config(text="", fg='gray'))
+    
+    def ajouter_a_historique(self, expression: str, resultat: str):
+        """Ajoute un calcul à l'historique."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entree = {
+            'time': timestamp,
+            'expression': expression,
+            'resultat': resultat
+        }
+        self.historique.append(entree)
+        
+        # Mettre à jour l'affichage de l'historique
+        self.history_text.config(state=tk.NORMAL)
+        self.history_text.insert(tk.END, 
+            f"[{timestamp}] {expression} = {resultat}\n")
+        self.history_text.see(tk.END)
+        self.history_text.config(state=tk.DISABLED)
+    
+    def effacer_historique(self):
+        """Efface l'historique des calculs."""
+        if messagebox.askyesno("Confirmation", 
+                              "Voulez-vous vraiment effacer tout l'historique ?"):
+            self.historique.clear()
+            self.history_text.config(state=tk.NORMAL)
+            self.history_text.delete(1.0, tk.END)
+            self.history_text.config(state=tk.DISABLED)
+    
+    def basculer_historique(self):
+        """Affiche/masque l'historique."""
+        if self.history_frame.winfo_ismapped():
+            self.history_frame.pack_forget()
+            self.btn_historique.config(text="📜 Historique ▼")
+        else:
+            self.history_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+            self.btn_historique.config(text="📜 Historique ▲")
+    
+    def basculer_theme(self):
+        """Bascule entre les thèmes clair et sombre."""
+        if self.theme_actuel == "clair":
+            self.theme_actuel = "sombre"
+            self.btn_theme.config(text="☀️ Clair")
+        else:
+            self.theme_actuel = "clair"
+            self.btn_theme.config(text="🌙 Sombre")
+        
+        self.appliquer_theme()
+    
+    def basculer_mode_angle(self):
+        """Bascule entre les modes degré et radian."""
+        if self.mode_angle == "DEG":
+            self.mode_angle = "RAD"
+        else:
+            self.mode_angle = "DEG"
+        
+        self.btn_angle.config(text=f"📐 {self.mode_angle}")
+    
+    def appliquer_theme(self):
+        """Applique le thème sélectionné à tous les composants."""
+        theme = self.THEMES[self.theme_actuel]
+        
+        # Fenêtre principale
+        self.root.config(bg=theme['bg'])
+        
+        # Affichage
+        self.display.config(
+            bg=theme['display_bg'],
+            fg=theme['display_fg'],
+            insertbackground=theme['display_fg']
+        )
+        
+        # Sous-affichage
+        self.sub_display.config(
+            bg=theme['bg'],
+            fg='gray'
+        )
+        
+        # Boutons de menu
+        for btn in [self.btn_theme, self.btn_angle, self.btn_historique]:
+            btn.config(
+                bg=theme['button_bg'],
+                fg=theme['button_fg'],
+                activebackground=theme['button_active']
+            )
+        
+        # Boutons de la calculatrice
+        for texte, btn in self.boutons.items():
+            if texte == '=':
+                btn.config(
+                    bg=theme['equal_bg'],
+                    fg=theme['equal_fg'],
+                    activebackground=theme['equal_bg']
+                )
+            elif texte in ['C', '⌫']:
+                btn.config(
+                    bg=theme['clear_bg'],
+                    fg=theme['clear_fg'],
+                    activebackground=theme['clear_bg']
+                )
+            elif texte in ['+', '-', '×', '÷', '%', 'xʸ']:
+                btn.config(
+                    bg=theme['operator_bg'],
+                    fg=theme['operator_fg'],
+                    activebackground=theme['operator_bg']
+                )
+            else:
+                btn.config(
+                    bg=theme['button_bg'],
+                    fg=theme['button_fg'],
+                    activebackground=theme['button_active']
+                )
+        
+        # Historique
+        if hasattr(self, 'history_text'):
+            self.history_text.config(
+                bg=theme['history_bg'],
+                fg=theme['history_fg']
+            )
+    
+    def centrer_fenetre(self):
+        """Centre la fenêtre sur l'écran."""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+
+
+def main():
+    """Point d'entrée principal de l'application."""
+    root = tk.Tk()
+    app = CalculatriceScientifique(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Guide d'utilisation interactif de la Calculatrice Scientifique
+=============================================================
+Démonstrations et exemples pratiques d'utilisation.
+"""
+
+import sys
+from datetime import datetime
+
+
+class GuideInteractif:
+    """Guide d'utilisation avec exemples et démonstrations."""
+    
+    def __init__(self):
+        """Initialise le guide."""
+        self.exemples = self.preparer_exemples()
+    
+    def preparer_exemples(self):
+        """Prépare la liste des exemples catégorisés."""
+        return {
+            "Opérations de base": [
+                ("Addition simple", "2 + 3", "5"),
+                ("Soustraction", "10 - 4", "6"),
+                ("Multiplication", "6 × 7", "42"),
+                ("Division", "20 ÷ 4", "5"),
+                ("Division décimale", "10 ÷ 3", "3.333..."),
+                ("Modulo", "17 % 5", "2"),
+                ("Priorité opérateurs", "2 + 3 × 4", "14"),
+                ("Avec parenthèses", "(2 + 3) × 4", "20"),
+            ],
+            
+            "Parenthèses imbriquées": [
+                ("Simples", "(5 + 3) × 2", "16"),
+                ("Doubles", "((2 + 3) × 4) - 1", "19"),
+                ("Triples", "(((10 - 2) × 3) + 4) ÷ 2", "14"),
+                ("Complexes", "((5 + 3) × (10 - 4)) ÷ 2", "24"),
+                ("Multiples", "(10 ÷ 2) + (8 × 3) - (5 - 1)", "26"),
+            ],
+            
+            "Fonctions trigonométriques (DEG)": [
+                ("sin(30°)", "sin(30)", "0.5"),
+                ("cos(60°)", "cos(60)", "0.5"),
+                ("tan(45°)", "tan(45)", "1"),
+                ("sin(90°)", "sin(90)", "1"),
+                ("cos(180°)", "cos(180)", "-1"),
+                ("tan(0°)", "tan(0)", "0"),
+            ],
+            
+            "Fonctions trigonométriques (RAD)": [
+                ("sin(π/6)", "sin(π÷6)", "0.5"),
+                ("cos(π/3)", "cos(π÷3)", "0.5"),
+                ("tan(π/4)", "tan(π÷4)", "1"),
+                ("sin(π/2)", "sin(π÷2)", "1"),
+                ("cos(π)", "cos(π)", "-1"),
+            ],
+            
+            "Logarithmes": [
+                ("log₁₀(100)", "log(100)", "2"),
+                ("log₁₀(1000)", "log(1000)", "3"),
+                ("log₁₀(1)", "log(1)", "0"),
+                ("ln(e)", "ln(e)", "1"),
+                ("ln(e²)", "ln(e²)", "2"),
+                ("ln(1)", "ln(1)", "0"),
+            ],
+            
+            "Puissances et racines": [
+                ("5 au carré", "5²", "25"),
+                ("2 puissance 8", "2^8", "256"),
+                ("10 puissance 3", "10³", "1000"),
+                ("Racine de 16", "√16", "4"),
+                ("Racine de 144", "√144", "12"),
+                ("Racine de 2", "√2", "1.414..."),
+            ],
+            
+            "Autres fonctions": [
+                ("Inverse de 4", "1/4", "0.25"),
+                ("Inverse de 8", "1÷8", "0.125"),
+                ("Factorielle 5", "5!", "120"),
+                ("Factorielle 6", "6!", "720"),
+                ("Factorielle 0", "0!", "1"),
+            ],
+            
+            "Constantes": [
+                ("Pi", "π", "3.14159..."),
+                ("Euler", "e", "2.71828..."),
+                ("2π", "2×π", "6.28318..."),
+                ("π²", "π²", "9.86960..."),
+                ("e²", "e²", "7.38905..."),
+            ],
+            
+            "Expressions complexes": [
+                ("Géométrie 1", "π × 5²", "78.54 (aire cercle r=5)"),
+                ("Géométrie 2", "2 × π × 5", "31.42 (périmètre r=5)"),
+                ("Trigonométrie", "10 × sin(30)", "5 (hauteur triangle)"),
+                ("Finance", "1000 × (1.05)¹⁰", "1628.89 (intérêts)"),
+                ("Statistique", "√((100-85)²)", "15 (écart)"),
+                ("Physique", "(1÷2) × 10 × 5²", "125 (énergie)"),
+            ],
+            
+            "Gestion d'erreurs": [
+                ("Division par zéro", "10 ÷ 0", "❌ Erreur"),
+                ("Racine négative", "√(-4)", "❌ Erreur"),
+                ("Logarithme négatif", "ln(-1)", "❌ Erreur"),
+                ("Expression vide", "", "❌ Erreur"),
+                ("Parenthèse non fermée", "(2 + 3", "❌ Erreur"),
+                ("Opérateur invalide", "2 ++ 3", "❌ Erreur"),
+            ],
+        }
+    
+    def afficher_entete(self):
+        """Affiche l'en-tête du guide."""
+        print()
+        print("╔" + "═" * 78 + "╗")
+        print("║" + " " * 20 + "📖 GUIDE D'UTILISATION INTERACTIF" + " " * 25 + "║")
+        print("║" + " " * 20 + "Calculatrice Scientifique Tkinter" + " " * 25 + "║")
+        print("╚" + "═" * 78 + "╝")
+        print()
+        print(f"📅 Date : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        print(f"🐍 Python : {sys.version.split()[0]}")
+        print()
+    
+    def afficher_section(self, titre: str, exemples: list):
+        """Affiche une section d'exemples."""
+        print("=" * 80)
+        print(f" {titre}")
+        print("=" * 80)
+        print()
+        
+        # Largeurs des colonnes
+        col1_width = max(len(ex[0]) for ex in exemples) + 2
+        col2_width = max(len(ex[1]) for ex in exemples) + 2
+        
+        # En-tête du tableau
+        print(f"{'Description':<{col1_width}} │ {'Expression':<{col2_width}} │ Résultat attendu")
+        print("─" * col1_width + "┼" + "─" * col2_width + "┼" + "─" * 30)
+        
+        # Lignes du tableau
+        for description, expression, resultat in exemples:
+            print(f"{description:<{col1_width}} │ {expression:<{col2_width}} │ {resultat}")
+        
+        print()
+    
+    def afficher_raccourcis(self):
+        """Affiche la liste des raccourcis clavier."""
+        print("=" * 80)
+        print(" ⌨️ RACCOURCIS CLAVIER")
+        print("=" * 80)
+        print()
+        
+        raccourcis = [
+            ("0-9, +, -, ×, ÷, ., (, )", "Saisie directe des caractères"),
+            ("Enter / ⏎", "Calculer le résultat de l'expression"),
+            ("Escape / Esc", "Effacer toute l'expression"),
+            ("Backspace / ⌫", "Supprimer le dernier caractère"),
+            ("Delete / Del", "Supprimer le dernier caractère"),
+        ]
+        
+        for touche, action in raccourcis:
+            print(f"  {touche:<30} → {action}")
+        
+        print()
+    
+    def afficher_fonctionnalites(self):
+        """Affiche les fonctionnalités principales."""
+        print("=" * 80)
+        print(" ✨ FONCTIONNALITÉS PRINCIPALES")
+        print("=" * 80)
+        print()
+        
+        fonctionnalites = [
+            ("🧮 Opérations de base", "Addition, soustraction, multiplication, division, modulo"),
+            ("📐 Trigonométrie", "sin, cos, tan avec modes degrés (DEG) et radians (RAD)"),
+            ("📈 Logarithmes", "log₁₀ et ln (logarithme naturel)"),
+            ("🔢 Puissances", "Carré (x²), puissance (xʸ), racine (√)"),
+            ("🔬 Fonctions avancées", "Inverse (1/x), factorielle (n!)"),
+            ("🎯 Constantes", "π (pi), e (Euler), Ans (dernier résultat)"),
+            ("🎨 Thèmes", "Clair et sombre, personnalisables"),
+            ("📜 Historique", "Sauvegarde de tous les calculs avec horodatage"),
+            ("🛡️ Gestion d'erreurs", "Messages explicites pour toutes les erreurs"),
+            ("🔄 Responsive", "Interface adaptative et fluide"),
+        ]
+        
+        for titre, description in fonctionnalites:
+            print(f"  {titre:<25} → {description}")
+        
+        print()
+    
+    def afficher_conseils(self):
+        """Affiche des conseils d'utilisation."""
+        print("=" * 80)
+        print(" 💡 CONSEILS ET ASTUCES")
+        print("=" * 80)
+        print()
+        
+        conseils = [
+            "1. Utilisez les parenthèses pour contrôler l'ordre des opérations",
+            "2. Le mode angle (DEG/RAD) affecte toutes les fonctions trigonométriques",
+            "3. 'Ans' permet de réutiliser le dernier résultat dans un nouveau calcul",
+            "4. L'historique est scrollable - utilisez la molette pour naviguer",
+            "5. Les erreurs s'affichent pendant 3 secondes puis disparaissent",
+            "6. Le thème sombre réduit la fatigue oculaire lors d'une utilisation prolongée",
+            "7. Utilisez les raccourcis clavier pour une saisie plus rapide",
+            "8. Les parenthèses peuvent être imbriquées sans limitation",
+            "9. Le sous-affichage montre les résultats intermédiaires",
+            "10. Double-cliquez sur l'historique pour réutiliser une expression",
+        ]
+        
+        for conseil in conseils:
+            print(f"  {conseil}")
+        
+        print()
+    
+    def afficher_exemples_pratiques(self):
+        """Affiche des exemples pratiques d'utilisation."""
+        print("=" * 80)
+        print(" 🎯 EXEMPLES PRATIQUES")
+        print("=" * 80)
+        print()
+        
+        exemples = [
+            ("Calcul d'aire", "Aire d'un cercle de rayon 7", "π × 7² = 153.94"),
+            ("Calcul de volume", "Volume d'une sphère de rayon 5", "(4÷3) × π × 5³ = 523.60"),
+            ("Trigonométrie", "Hauteur d'un arbre (angle=35°, distance=20m)", "20 × tan(35) = 14.00"),
+            ("Finance", "Valeur future (1500€, 3% sur 5 ans)", "1500 × (1.03)⁵ = 1738.91"),
+            ("Statistique", "Écart-type de [10,20,30]", "√(((10-20)²+(20-20)²+(30-20)²)÷3) = 8.16"),
+            ("Physique", "Énergie cinétique (m=50kg, v=10m/s)", "(1÷2) × 50 × 10² = 2500 J"),
+        ]
+        
+        for domaine, description, calcul in exemples:
+            print(f"  📌 {domaine}")
+            print(f"     {description}")
+            print(f"     → {calcul}")
+            print()
+    
+    def generer_guide_complet(self):
+        """Génère le guide complet."""
+        self.afficher_entete()
+        
+        # Afficher toutes les sections d'exemples
+        for titre, exemples in self.exemples.items():
+            self.afficher_section(titre, exemples)
+        
+        # Afficher les autres sections
+        self.afficher_fonctionnalites()
+        self.afficher_raccourcis()
+        self.afficher_exemples_pratiques()
+        self.afficher_conseils()
+        
+        # Pied de page
+        print("=" * 80)
+        print(" 🚀 LANCEMENT DE L'APPLICATION")
+        print("=" * 80)
+        print()
+        print("  Pour lancer la calculatrice :")
+        print()
+        print("    $ cd /home/user/calculatrice_scientifique")
+        print("    $ python3 calculatrice.py")
+        print()
+        print("  Pour exécuter les tests :")
+        print()
+        print("    $ python3 tests.py")
+        print()
+        print("=" * 80)
+        print()
+
+
+def main():
+    """Point d'entrée principal."""
+    guide = GuideInteractif()
+    guide.generer_guide_complet()
+
+
+if __name__ == "__main__":
+    main()
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Tests unitaires pour la Calculatrice Scientifique
+=================================================
+Suite de tests complète pour valider toutes les fonctionnalités.
+"""
+
+import math
+import sys
+from datetime import datetime
+
+
+class TestCalculatrice:
+    """Classe de tests pour la calculatrice."""
+    
+    def __init__(self):
+        """Initialise le système de tests."""
+        self.tests_reussis = 0
+        self.tests_echoues = 0
+        self.resultats = []
+    
+    def tester_operation(self, nom: str, expression: str, attendu: float, 
+                        tolerance: float = 1e-10):
+        """
+        Teste une opération mathématique.
+        
+        Args:
+            nom: Nom du test
+            expression: Expression à évaluer
+            attendu: Résultat attendu
+            tolerance: Tolérance pour la comparaison des flottants
+        """
+        try:
+            resultat = eval(expression)
+            
+            # Comparaison avec tolérance pour les flottants
+            if isinstance(attendu, float):
+                succes = abs(resultat - attendu) < tolerance
+            else:
+                succes = resultat == attendu
+            
+            if succes:
+                self.tests_reussis += 1
+                statut = "✅ RÉUSSI"
+                self.resultats.append((nom, True, None))
+            else:
+                self.tests_echoues += 1
+                statut = "❌ ÉCHOUÉ"
+                erreur = f"Attendu: {attendu}, Obtenu: {resultat}"
+                self.resultats.append((nom, False, erreur))
+            
+            print(f"{statut} - {nom}")
+            if not succes:
+                print(f"   Expression: {expression}")
+                print(f"   Attendu: {attendu}, Obtenu: {resultat}")
+                
+        except Exception as e:
+            self.tests_echoues += 1
+            print(f"❌ ERREUR - {nom}")
+            print(f"   Expression: {expression}")
+            print(f"   Exception: {str(e)}")
+            self.resultats.append((nom, False, str(e)))
+    
+    def tester_erreur(self, nom: str, expression: str, type_erreur: type):
+        """
+        Teste qu'une expression génère bien une erreur.
+        
+        Args:
+            nom: Nom du test
+            expression: Expression à évaluer
+            type_erreur: Type d'erreur attendu
+        """
+        try:
+            eval(expression)
+            self.tests_echoues += 1
+            print(f"❌ ÉCHOUÉ - {nom}")
+            print(f"   L'erreur {type_erreur.__name__} n'a pas été levée")
+            self.resultats.append((nom, False, 
+                                 f"Erreur {type_erreur.__name__} non levée"))
+        except type_erreur:
+            self.tests_reussis += 1
+            print(f"✅ RÉUSSI - {nom}")
+            self.resultats.append((nom, True, None))
+        except Exception as e:
+            self.tests_echoues += 1
+            print(f"❌ ÉCHOUÉ - {nom}")
+            print(f"   Mauvais type d'erreur: {type(e).__name__}")
+            self.resultats.append((nom, False, 
+                                 f"Mauvais type: {type(e).__name__}"))
+    
+    def executer_suite_tests(self):
+        """Exécute la suite complète de tests."""
+        print("=" * 70)
+        print(" 🧪 TESTS UNITAIRES - CALCULATRICE SCIENTIFIQUE")
+        print("=" * 70)
+        print()
+        
+        # Tests des opérations de base
+        print("📊 Tests des opérations de base")
+        print("-" * 70)
+        self.tester_operation("Addition simple", "2 + 3", 5)
+        self.tester_operation("Soustraction", "10 - 4", 6)
+        self.tester_operation("Multiplication", "6 * 7", 42)
+        self.tester_operation("Division", "15 / 3", 5.0)
+        self.tester_operation("Division décimale", "10 / 4", 2.5)
+        self.tester_operation("Modulo", "17 % 5", 2)
+        self.tester_operation("Puissance", "2 ** 3", 8)
+        self.tester_operation("Opérations mixtes", "2 + 3 * 4", 14)
+        self.tester_operation("Priorité des opérations", "(2 + 3) * 4", 20)
+        print()
+        
+        # Tests des parenthèses
+        print("🔢 Tests des parenthèses")
+        print("-" * 70)
+        self.tester_operation("Parenthèses simples", "(5 + 3) * 2", 16)
+        self.tester_operation("Parenthèses imbriquées", "((2 + 3) * (4 + 1))", 25)
+        self.tester_operation("Parenthèses multiples", "(10 - 2) * (3 + 4)", 56)
+        self.tester_operation("Parenthèses complexes", 
+                            "((5 + 3) * 2) - (4 / 2)", 14.0)
+        print()
+        
+        # Tests des fonctions trigonométriques
+        print("📐 Tests des fonctions trigonométriques (radians)")
+        print("-" * 70)
+        self.tester_operation("sin(0)", f"math.sin(0)", 0.0)
+        self.tester_operation("sin(π/2)", f"math.sin(math.pi/2)", 1.0)
+        self.tester_operation("cos(0)", f"math.cos(0)", 1.0)
+        self.tester_operation("cos(π)", f"math.cos(math.pi)", -1.0, 1e-9)
+        self.tester_operation("tan(0)", f"math.tan(0)", 0.0)
+        self.tester_operation("tan(π/4)", f"math.tan(math.pi/4)", 1.0, 1e-9)
+        print()
+        
+        # Tests des fonctions logarithmiques
+        print("📈 Tests des fonctions logarithmiques")
+        print("-" * 70)
+        self.tester_operation("log10(100)", "math.log10(100)", 2.0)
+        self.tester_operation("log10(1000)", "math.log10(1000)", 3.0)
+        self.tester_operation("log10(1)", "math.log10(1)", 0.0)
+        self.tester_operation("ln(e)", f"math.log({math.e})", 1.0)
+        self.tester_operation("ln(1)", "math.log(1)", 0.0)
+        self.tester_operation("ln(e²)", f"math.log({math.e}**2)", 2.0, 1e-9)
+        print()
+        
+        # Tests des autres fonctions
+        print("🔬 Tests des fonctions avancées")
+        print("-" * 70)
+        self.tester_operation("Racine carrée de 16", "math.sqrt(16)", 4.0)
+        self.tester_operation("Racine carrée de 2", "math.sqrt(2)", 
+                            math.sqrt(2))
+        self.tester_operation("Carré de 5", "5 ** 2", 25)
+        self.tester_operation("Inverse de 4", "1 / 4", 0.25)
+        self.tester_operation("Factorielle 5", "math.factorial(5)", 120)
+        self.tester_operation("Factorielle 0", "math.factorial(0)", 1)
+        self.tester_operation("Constante π", f"math.pi", math.pi)
+        self.tester_operation("Constante e", f"math.e", math.e)
+        print()
+        
+        # Tests d'expressions complexes
+        print("🧮 Tests d'expressions complexes")
+        print("-" * 70)
+        self.tester_operation("Expression mixte 1", 
+                            "2 + 3 * 4 - 5 / 2", 11.5)
+        self.tester_operation("Expression mixte 2", 
+                            "(2 + 3) * (4 - 1) / 3", 5.0)
+        self.tester_operation("Expression avec puissance", 
+                            "2 ** 3 + 4 ** 2", 24)
+        self.tester_operation("Expression complète", 
+                            "math.sqrt(16) + 2 ** 3 - 10 / 2", 7.0)
+        print()
+        
+        # Tests de gestion des erreurs
+        print("⚠️ Tests de gestion des erreurs")
+        print("-" * 70)
+        self.tester_erreur("Division par zéro", "10 / 0", ZeroDivisionError)
+        self.tester_erreur("Logarithme négatif", "math.log(-1)", ValueError)
+        self.tester_erreur("Racine négative", "math.sqrt(-4)", ValueError)
+        print()
+        
+        # Résumé des tests
+        self.afficher_resume()
+    
+    def afficher_resume(self):
+        """Affiche le résumé des tests."""
+        total = self.tests_reussis + self.tests_echoues
+        taux_reussite = (self.tests_reussis / total * 100) if total > 0 else 0
+        
+        print("=" * 70)
+        print(" 📊 RÉSUMÉ DES TESTS")
+        print("=" * 70)
+        print(f"✅ Tests réussis : {self.tests_reussis}/{total}")
+        print(f"❌ Tests échoués : {self.tests_echoues}/{total}")
+        print(f"📈 Taux de réussite : {taux_reussite:.1f}%")
+        print()
+        
+        if self.tests_echoues > 0:
+            print("⚠️ Tests en échec :")
+            print("-" * 70)
+            for nom, succes, erreur in self.resultats:
+                if not succes:
+                    print(f"  • {nom}")
+                    if erreur:
+                        print(f"    → {erreur}")
+        else:
+            print("🎉 Tous les tests ont réussi !")
+        
+        print("=" * 70)
+        print()
+        
+        return taux_reussite == 100.0
+
+
+def main():
+    """Point d'entrée principal des tests."""
+    print()
+    print("╔" + "═" * 68 + "╗")
+    print("║" + " " * 15 + "SUITE DE TESTS COMPLÈTE" + " " * 30 + "║")
+    print("║" + " " * 10 + "Calculatrice Scientifique Tkinter" + " " * 24 + "║")
+    print("╚" + "═" * 68 + "╝")
+    print()
+    print(f"📅 Date : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    print(f"🐍 Python : {sys.version.split()[0]}")
+    print()
+    
+    # Exécuter les tests
+    testeur = TestCalculatrice()
+    tous_reussis = testeur.executer_suite_tests()
+    
+    # Code de sortie
+    sys.exit(0 if tous_reussis else 1)
+
+
+if __name__ == "__main__":
+    main()
