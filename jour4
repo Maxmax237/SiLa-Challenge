@@ -1,0 +1,1184 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Script de démonstration du Pipeline ETL Complet
+Ce script montre comment utiliser la classe PipelineETLComplet avec différents scénarios.
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import sys
+
+# Ajouter le répertoire courant au path
+sys.path.append('.')
+
+from pipeline_etl_complet import PipelineETLComplet
+
+def scenario_complet():
+    """Scénario complet avec tous les jeux de données."""
+    print("=" * 80)
+    print("SCÉNARIO COMPLET - PIPELINE ETL AVEC TOUS LES JEUX DE DONNÉES")
+    print("=" * 80)
+    
+    # Créer le pipeline
+    pipeline = PipelineETLComplet(dossier_donnees='donnees/')
+    
+    # Exécuter le pipeline complet
+    resultats = pipeline.executer_pipeline_complet(fusion_type='concat')
+    
+    if resultats:
+        print("\n✓ Scénario complet exécuté avec succès!")
+        return resultats
+    else:
+        print("\n✗ Échec du scénario complet")
+        return None
+
+def scenario_fusion_specifique():
+    """Scénario avec fusion spécifique entre deux datasets."""
+    print("\n" + "=" * 80)
+    print("SCÉNARIO FUSION SPÉCIFIQUE - MERGE ENTRE TITANIC ET WEATHER")
+    print("=" * 80)
+    
+    # Créer le pipeline et extraire les données
+    pipeline = PipelineETLComplet(dossier_donnees='donnees/')
+    pipeline.extraire_donnees()
+    
+    # Créer une colonne commune pour la fusion (exemple: index)
+    if 'titanic' in pipeline.donnees and 'weather_data' in pipeline.donnees:
+        # Créer des colonnes de date pour permettre la fusion
+        pipeline.donnees['titanic']['date'] = pd.date_range('2018-01-01', periods=len(pipeline.donnees['titanic']))
+        pipeline.donnees['weather_data']['date'] = pd.date_range('2018-01-01', periods=len(pipeline.donnees['weather_data']))[:len(pipeline.donnees['titanic'])]
+        
+        # Fusionner sur la date
+        pipeline.fusion_datasets_merge('titanic', 'weather_data', 'date', how='inner')
+        
+        # Continuer avec les transformations
+        pipeline.transformer_donnees()
+        
+        # Exporter
+        fichiers = pipeline.charger_donnees()
+        
+        print("✓ Fusion spécifique réussie!")
+        return pipeline.donnees_finale
+    else:
+        print("✗ Datasets nécessaires non disponibles")
+        return None
+
+def scenario_analyse_personnalisee():
+    """Scénario avec analyse personnalisée et paramètres spécifiques."""
+    print("\n" + "=" * 80)
+    print("SCÉNARIO ANALYSE PERSONNALISÉE")
+    print("=" * 80)
+    
+    pipeline = PipelineETLComplet(dossier_donnees='donnees/')
+    
+    # Extraire les données
+    pipeline.extraire_donnees()
+    
+    # Fusionner tous les datasets
+    pipeline.fusion_datasets_concat()
+    
+    # Nettoyer avec la moyenne au lieu de la médiane
+    pipeline.nettoyer_valeurs_manquantes(methode='mean')
+    
+    # Détecter les outliers avec un multiplicateur différent
+    pipeline.detecter_outliers_iqr(multiplicateur=2.0)
+    
+    # Créer des features dérivées
+    pipeline.creer_features_derivees()
+    
+    # Exporter
+    pipeline.exporter_csv(nom_fichier='donnees_personnalisees.csv')
+    pipeline.exporter_excel_formate(nom_fichier='donnees_personnalisees.xlsx')
+    
+    # Créer des visualisations spécifiques
+    pipeline.creer_visualisations()
+    
+    print("✓ Analyse personnalisée terminée!")
+    return pipeline.donnees_finale
+
+def analyse_resultats(resultats):
+    """Analyse détaillée des résultats du pipeline."""
+    print("\n" + "=" * 80)
+    print("ANALYSE DÉTAILLÉE DES RÉSULTATS")
+    print("=" * 80)
+    
+    if not resultats:
+        print("Aucun résultat à analyser")
+        return
+    
+    donnees_finale = resultats['donnees_finale']
+    statistiques = resultats['statistiques']
+    
+    print(f"\n1. STATISTIQUES GÉNÉRALES:")
+    print(f"   - Datasets originaux: {statistiques['n_datasets']}")
+    print(f"   - Dimensions finales: {statistiques['n_lignes_finale']} × {statistiques['n_colonnes_finale']}")
+    print(f"   - Fichiers exportés: {statistiques['n_fichiers_exportes']}")
+    
+    print(f"\n2. APERÇU DES DONNÉES FINALES:")
+    print(donnees_finale.head())
+    
+    print(f"\n3. TYPES DE DONNÉES:")
+    types_donnees = donnees_finale.dtypes.value_counts()
+    for dtype, count in types_donnees.items():
+        print(f"   - {dtype}: {count} colonnes")
+    
+    print(f"\n4. STATISTIQUES DESCRIPTIVES:")
+    print(donnees_finale.describe())
+    
+    print(f"\n5. VALEURS MANQUANTES:")
+    valeurs_manquantes = donnees_finale.isnull().sum()
+    colonnes_avec_missing = valeurs_manquantes[valeurs_manquantes > 0]
+    if len(colonnes_avec_missing) > 0:
+        for col, count in colonnes_avec_missing.items():
+            print(f"   - {col}: {count} valeurs manquantes")
+    else:
+        print("   Aucune valeur manquante trouvée")
+    
+    print(f"\n6. FICHIERS CRÉÉS:")
+    for type_fichier, chemin in resultats['fichiers_crees'].items():
+        print(f"   - {type_fichier}: {chemin}")
+
+def verification_fichiers():
+    """Vérifie que tous les fichiers nécessaires existent."""
+    print("\n" + "=" * 80)
+    print("VÉRIFICATION DES FICHIERS")
+    print("=" * 80)
+    
+    # Vérifier que le script principal existe
+    if os.path.exists('pipeline_etl_complet.py'):
+        print("✓ pipeline_etl_complet.py trouvé")
+    else:
+        print("✗ pipeline_etl_complet.py manquant")
+        return False
+    
+    # Vérifier les dossiers
+    dossiers = ['donnees', 'resultats', 'resultats/visualisations']
+    for dossier in dossiers:
+        if os.path.exists(dossier):
+            print(f"✓ Dossier {dossier} existe")
+        else:
+            os.makedirs(dossier, exist_ok=True)
+            print(f"✓ Dossier {dossier} créé")
+    
+    return True
+
+def main():
+    """Fonction principale qui exécute tous les scénarios."""
+    print("DÉMARRAGE DU SCRIPT DE DÉMONSTRATION ETL")
+    
+    # Vérifier les fichiers
+    if not verification_fichiers():
+        print("Problème avec les fichiers nécessaires. Arrêt.")
+        return
+    
+    # Scénario 1: Complet
+    print("\n" + "=" * 40)
+    print("EXÉCUTION DU SCÉNARIO 1: PIPELINE COMPLET")
+    print("=" * 40)
+    resultats_complets = scenario_complet()
+    
+    if resultats_complets:
+        analyse_resultats(resultats_complets)
+    
+    # Scénario 2: Fusion spécifique
+    print("\n" + "=" * 40)
+    print("EXÉCUTION DU SCÉNARIO 2: FUSION SPÉCIFIQUE")
+    print("=" * 40)
+    resultats_fusion = scenario_fusion_specifique()
+    
+    # Scénario 3: Analyse personnalisée
+    print("\n" + "=" * 40)
+    print("EXÉCUTION DU SCÉNARIO 3: ANALYSE PERSONNALISÉE")
+    print("=" * 40)
+    resultats_perso = scenario_analyse_personnalisee()
+    
+    # Résumé final
+    print("\n" + "=" * 80)
+    print("RÉSUMÉ FINAL")
+    print("=" * 80)
+    print("✓ Tous les scénarios ont été exécutés avec succès!")
+    print("✓ Les résultats sont disponibles dans le dossier 'resultats/'")
+    print("✓ Les visualisations sont dans 'resultats/visualisations/'")
+    print("\nPour accéder aux résultats:")
+    print("- CSV: resultats/donnees_finale.csv")
+    print("- Excel formaté: resultats/donnees_finale_formate.xlsx")
+    print("- Visualisations: resultats/visualisations/")
+    print("\nLe pipeline ETL complet est maintenant opérationnel!")
+
+if __name__ == "__main__":
+    main()
+import pandas as pd
+import numpy as np
+
+def scenario_fusion_specifique():
+    """Fusion spécifique de titanic et weather_data basée sur la date simulée""" 
+    print("\n" + "="*80)
+    print("SCÉNARIO SPÉCIFIQUE: Fusion Titanic et Weather Data")
+    print("="*80)
+    
+    # Chargement des données (ajustez les chemins selon votre structure)
+    titanic_df = pd.read_csv('donnees/titanic.csv')
+    weather_df = pd.read_csv('donnees/weather_data.csv')
+    
+    print(f"\nDimensions originales - Titanic: {titanic_df.shape}, Weather: {weather_df.shape}")
+    
+    # Simulation de dates pour les deux datasets
+    np.random.seed(42)
+    
+    # Pour Titanic: 891 dates sur 1912
+    dates_titanic = pd.date_range('1912-01-01', '1912-12-31', periods=len(titanic_df))
+    dates_titanic = np.random.permutation(dates_titanic)
+    titanic_df['date'] = dates_titanic
+    
+    # Pour Weather: dates de 2018
+    dates_weather = pd.date_range('2018-01-01', periods=len(weather_df))
+    weather_df['date'] = dates_weather
+    
+    print(f"Aperçu des dates Titanic:\n{titanic_df['date'].head()}")
+    print(f"\nAperçu des dates Weather:\n{weather_df['date'].head()}")
+    
+    # Création de colonne mois-jour pour la fusion
+    titanic_df['mois_jour'] = titanic_df['date'].dt.strftime('%m-%d')
+    weather_df['mois_jour'] = weather_df['date'].dt.strftime('%m-%d')
+    
+    # Solution 1: Fusion directe
+    fusion_mois_jour = pd.merge(
+        titanic_df, 
+        weather_df, 
+        on='mois_jour', 
+        how='left',
+        suffixes=('_titanic', '_weather')
+    )
+    
+    print(f"\nFusion sur mois/jour: {fusion_mois_jour.shape}")
+    
+    # Solution 2: Agrégation
+    weather_agg = weather_df.groupby('mois_jour').agg({
+        'temperature': 'mean',
+        'humidity': 'mean',
+        'precipitation': 'mean'
+    }).reset_index()
+    
+    fusion_agregee = pd.merge(
+        titanic_df, 
+        weather_agg, 
+        on='mois_jour', 
+        how='left'
+    )
+    
+    print(f"\nFusion avec agrégation: {fusion_agregee.shape}")
+    
+    # Solution 3: Échantillonnage
+    weather_echantillon = weather_df.sample(n=len(titanic_df), random_state=42)
+    weather_echantillon = weather_echantillon.reset_index(drop=True)
+    titanic_reset = titanic_df.reset_index(drop=True)
+    
+    fusion_concat = pd.concat([titanic_reset, weather_echantillon[['temperature', 'humidity', 'precipitation']]], axis=1)
+    
+    print(f"\nConcaténation avec échantillonnage: {fusion_concat.shape}")
+    
+    # Affichage des résultats
+    print("\n" + "-"*40)
+    print("Aperçu de la fusion avec agrégation:")
+    print("-"*40)
+    print(fusion_agregee[['mois_jour', 'temperature', 'humidity', 'precipitation']].head(10))
+    
+    return {
+        'fusion_mois_jour': fusion_mois_jour,
+        'fusion_agregee': fusion_agregee,
+        'fusion_concat': fusion_concat
+    }
+
+# Exécution de la fonction
+if __name__ == "__main__":
+    resultats = scenario_fusion_specifique()
+
+#!/bin/bash
+
+# Script d'installation et d'exécution du Pipeline ETL
+# Ce script automatise l'installation des dépendances et l'exécution du pipeline
+
+echo "========================================="
+echo "PIPELINE ETL - INSTALLATION & EXÉCUTION"
+echo "========================================="
+
+# Vérifier que Python est installé
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 n'est pas installé. Veuillez installer Python 3.8 ou supérieur."
+    exit 1
+fi
+
+echo "✅ Python 3 trouvé"
+
+# Créer l'environnement virtuel
+echo "Création de l'environnement virtuel..."
+python3 -m venv venv
+
+# Activer l'environnement virtuel
+echo "Activation de l'environnement virtuel..."
+source venv/bin/activate || . venv/Scripts/activate 2>/dev/null
+
+# Installer les dépendances
+echo "Installation des dépendances..."
+pip install --upgrade pip
+pip install -r requirements.txt
+
+echo "✅ Dépendances installées"
+
+# Créer les dossiers nécessaires
+echo "Création des dossiers..."
+mkdir -p donnees resultats resultats/visualisations
+
+# Vérifier que le script principal existe
+if [ ! -f "pipeline_etl_complet.py" ]; then
+    echo "❌ Le fichier pipeline_etl_complet.py n'existe pas"
+    exit 1
+fi
+
+# Exécuter le script de démonstration
+echo ""
+echo "========================================="
+echo "EXÉCUTION DU PIPELINE ETL"
+echo "========================================="
+
+python demo_etl.py
+
+echo ""
+echo "========================================="
+echo "INSTALLATION ET EXÉCUTION TERMINÉES"
+echo "========================================="
+echo ""
+echo "📁 Fichiers créés:"
+echo "   - Données: donnees/"
+echo "   - Résultats: resultats/"
+echo "   - Visualisations: resultats/visualisations/"
+echo ""
+echo "Pour réactiver l'environnement virtuel plus tard:"
+echo "   source venv/bin/activate  # Linux/Mac"
+echo "   venv\\Scripts\\activate   # Windows"
+echo ""
+echo "Pour désactiver l'environnement virtuel:"
+echo "   deactivate"
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.decomposition import PCA
+import os
+import warnings
+warnings.filterwarnings('ignore')
+
+class PipelineETLComplet:
+    """
+    Pipeline ETL complet pour traiter plusieurs jeux de données hétérogènes.
+    Supporte la lecture, la fusion, le nettoyage, la détection d'outliers et l'export.
+    """
+    
+    def __init__(self, dossier_donnees='donnees/'):
+        """
+        Initialise le pipeline ETL.
+        
+        Args:
+            dossier_donnees (str): Chemin vers le dossier contenant les fichiers CSV
+        """
+        self.dossier_donnees = dossier_donnees
+        self.donnees = {}
+        self.donnees_fusionnees = None
+        self.donnees_finale = None
+        self.rapport_transformation = {}
+        
+        # Créer le dossier si nécessaire
+        os.makedirs(dossier_donnees, exist_ok=True)
+        os.makedirs('resultats', exist_ok=True)
+        
+    def _lire_csv_avec_encodage(self, chemin_fichier, encodages=None):
+        """
+        Lit un fichier CSV en essayant plusieurs encodages.
+        
+        Args:
+            chemin_fichier (str): Chemin du fichier CSV
+            encodages (list): Liste des encodages à essayer
+            
+        Returns:
+            pd.DataFrame: Données lues
+        """
+        if encodages is None:
+            encodages = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            
+        for encodage in encodages:
+            try:
+                print(f"Essai d'encodage {encodage} pour {chemin_fichier}")
+                return pd.read_csv(chemin_fichier, encoding=encodage)
+            except UnicodeDecodeError:
+                continue
+                
+        # Si aucun encodage ne fonctionne, utiliser utf-8 avec des erreurs ignorées
+        print(f"Avertissement: Utilisation de utf-8 avec erreurs ignorées pour {chemin_fichier}")
+        return pd.read_csv(chemin_fichier, encoding='utf-8', encoding_errors='ignore')
+    
+    def extraire_donnees(self):
+        """
+        Lit plusieurs fichiers CSV hétérogènes et les stocke dans self.donnees.
+        
+        Returns:
+            dict: Dictionnaire contenant les DataFrames extraits
+        """
+        print("=== PHASE D'EXTRACTION ===")
+        
+        fichiers_csv = []
+        if os.path.exists(self.dossier_donnees):
+            fichiers_csv = [f for f in os.listdir(self.dossier_donnees) if f.endswith('.csv')]
+        
+        if not fichiers_csv:
+            print(f"Aucun fichier CSV trouvé dans {self.dossier_donnees}")
+            print("Création de jeux de données de démonstration...")
+            self._creer_jeux_donnees_demo()
+            fichiers_csv = [f for f in os.listdir(self.dossier_donnees) if f.endswith('.csv')]
+        
+        for fichier in fichiers_csv:
+            chemin_complet = os.path.join(self.dossier_donnees, fichier)
+            try:
+                nom_dataset = fichier.replace('.csv', '')
+                df = self._lire_csv_avec_encodage(chemin_complet)
+                self.donnees[nom_dataset] = df
+                print(f"✓ {fichier}: {df.shape[0]} lignes, {df.shape[1]} colonnes")
+            except Exception as e:
+                print(f"✗ Erreur lors de la lecture de {fichier}: {str(e)}")
+        
+        print(f"\nTotal: {len(self.donnees)} jeux de données chargés")
+        return self.donnees
+    
+    def _creer_jeux_donnees_demo(self):
+        """Crée des jeux de données de démonstration si aucun n'existe."""
+        # Dataset Titanic
+        titanic_data = {
+            'PassengerId': range(1, 892),
+            'Survived': np.random.choice([0, 1], 891),
+            'Pclass': np.random.choice([1, 2, 3], 891),
+            'Name': [f'Passenger_{i}' for i in range(1, 892)],
+            'Sex': np.random.choice(['male', 'female'], 891),
+            'Age': np.random.normal(30, 12, 891),
+            'SibSp': np.random.poisson(0.5, 891),
+            'Parch': np.random.poisson(0.4, 891),
+            'Ticket': [f'TICKET_{i}' for i in range(1, 892)],
+            'Fare': np.random.exponential(30, 891),
+            'Cabin': np.random.choice(['A1', 'B2', 'C3', None], 891, p=[0.3, 0.3, 0.3, 0.1]),
+            'Embarked': np.random.choice(['C', 'Q', 'S'], 891)
+        }
+        
+        # Introduire des valeurs manquantes
+        titanic_df = pd.DataFrame(titanic_data)
+        titanic_df.loc[np.random.choice(titanic_df.index, 50), 'Age'] = np.nan
+        titanic_df.loc[np.random.choice(titanic_df.index, 30), 'Fare'] = np.nan
+        titanic_df.to_csv(f'{self.dossier_donnees}titanic.csv', index=False)
+        
+        # Dataset Iris
+        iris_data = {
+            'sepal_length': np.random.normal(5.8, 0.8, 150),
+            'sepal_width': np.random.normal(3.0, 0.4, 150),
+            'petal_length': np.random.normal(4.3, 1.8, 150),
+            'petal_width': np.random.normal(1.3, 0.8, 150),
+            'species': np.random.choice(['setosa', 'versicolor', 'virginica'], 150)
+        }
+        iris_df = pd.DataFrame(iris_data)
+        iris_df.to_csv(f'{self.dossier_donnees}iris.csv', index=False)
+        
+        # Dataset Amazon Bestsellers
+        amazon_data = {
+            'Name': [f'Book_{i}' for i in range(1, 551)],
+            'Author': [f'Author_{i%100}' for i in range(1, 551)],
+            'User Rating': np.random.uniform(3.0, 5.0, 550),
+            'Reviews': np.random.randint(100, 50000, 550),
+            'Price': np.random.uniform(5, 100, 550),
+            'Year': np.random.choice([2019, 2020, 2021, 2022], 550),
+            'Genre': np.random.choice(['Fiction', 'Non Fiction', 'Science', 'History'], 550)
+        }
+        amazon_df = pd.DataFrame(amazon_data)
+        amazon_df.to_csv(f'{self.dossier_donnees}amazon_bestsellers.csv', index=False)
+        
+        # Dataset Weather
+        weather_data = {
+            'date': pd.date_range('2018-01-01', '2022-12-31', freq='D'),
+            'temperature': np.random.normal(15, 10, 1826),
+            'humidity': np.random.uniform(30, 90, 1826),
+            'pressure': np.random.normal(1013, 50, 1826),
+            'wind_speed': np.random.exponential(5, 1826),
+            'precipitation': np.random.exponential(2, 1826)
+        }
+        weather_df = pd.DataFrame(weather_data)
+        weather_df.loc[np.random.choice(weather_df.index, 100), 'temperature'] = np.nan
+        weather_df.to_csv(f'{self.dossier_donnees}weather_data.csv', index=False)
+        
+        print("✓ Jeux de données de démonstration créés")
+    
+    def fusion_datasets_concat(self, datasets_keys=None, axis=0, ignore_index=True):
+        """
+        Fusionne plusieurs datasets en utilisant pd.concat().
+        
+        Args:
+            datasets_keys (list): Liste des clés des datasets à fusionner
+            axis (int): Axe de concaténation (0 pour vertical, 1 pour horizontal)
+            ignore_index (bool): Réinitialiser l'index
+            
+        Returns:
+            pd.DataFrame: Dataset fusionné
+        """
+        print("\n=== FUSION PAR CONCATENATION ===")
+        
+        if datasets_keys is None:
+            datasets_keys = list(self.donnees.keys())
+        
+        datasets_a_fusionner = [self.donnees[key] for key in datasets_keys if key in self.donnees]
+        
+        if len(datasets_a_fusionner) == 0:
+            print("Aucun dataset disponible pour la fusion")
+            return None
+        
+        try:
+            self.donnees_fusionnees = pd.concat(datasets_a_fusionner, axis=axis, ignore_index=ignore_index)
+            print(f"✓ Fusion réussie: {self.donnees_fusionnees.shape}")
+            return self.donnees_fusionnees
+        except Exception as e:
+            print(f"✗ Erreur lors de la fusion: {str(e)}")
+            return None
+    
+    def fusion_datasets_merge(self, dataset1_key, dataset2_key, colonne_cle, how='inner'):
+        """
+        Fusionne deux datasets en utilisant pd.merge().
+        
+        Args:
+            dataset1_key (str): Clé du premier dataset
+            dataset2_key (str): Clé du deuxième dataset
+            colonne_cle (str): Nom de la colonne de jointure
+            how (str): Type de jointure ('inner', 'left', 'right', 'outer')
+            
+        Returns:
+            pd.DataFrame: Dataset fusionné
+        """
+        print(f"\n=== FUSION PAR MERGE ({how}) ===")
+        
+        if dataset1_key not in self.donnees or dataset2_key not in self.donnees:
+            print("Un ou plusieurs datasets introuvables")
+            return None
+        
+        try:
+            self.donnees_fusionnees = pd.merge(
+                self.donnees[dataset1_key], 
+                self.donnees[dataset2_key], 
+                on=colonne_cle, 
+                how=how
+            )
+            print(f"✓ Fusion réussie: {self.donnees_fusionnees.shape}")
+            return self.donnees_fusionnees
+        except Exception as e:
+            print(f"✗ Erreur lors de la fusion: {str(e)}")
+            return None
+    
+    def nettoyer_valeurs_manquantes(self, df=None, methode='median', colonnes=None):
+        """
+        Nettoie les valeurs manquantes en utilisant la méthode spécifiée.
+        
+        Args:
+            df (pd.DataFrame): DataFrame à nettoyer (utilise self.donnees_fusionnees si None)
+            methode (str): Méthode de nettoyage ('median', 'mean', 'mode')
+            colonnes (list): Liste des colonnes à traiter (toutes si None)
+            
+        Returns:
+            pd.DataFrame: DataFrame nettoyé
+        """
+        print("\n=== NETTOYAGE DES VALEURS MANQUANTES ===")
+        
+        if df is None:
+            df = self.donnees_fusionnees.copy()
+        
+        if df is None:
+            print("Aucun dataset disponible pour le nettoyage")
+            return None
+        
+        if colonnes is None:
+            colonnes = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        valeurs_manquantes_avant = df.isnull().sum().sum()
+        print(f"Valeurs manquantes avant nettoyage: {valeurs_manquantes_avant}")
+        
+        for colonne in colonnes:
+            if colonne in df.columns and df[colonne].isnull().any():
+                if methode == 'median':
+                    valeur_remplacement = df[colonne].median()
+                elif methode == 'mean':
+                    valeur_remplacement = df[colonne].mean()
+                elif methode == 'mode':
+                    valeur_remplacement = df[colonne].mode()[0] if not df[colonne].mode().empty else 0
+                else:
+                    valeur_remplacement = df[colonne].median()
+                
+                df[colonne].fillna(valeur_remplacement, inplace=True)
+                print(f"✓ Colonne '{colonne}': {valeur_remplacement:.2f} (méthode: {methode})")
+        
+        valeurs_manquantes_apres = df.isnull().sum().sum()
+        print(f"Valeurs manquantes après nettoyage: {valeurs_manquantes_apres}")
+        print(f"Valeurs manquantes éliminées: {valeurs_manquantes_avant - valeurs_manquantes_apres}")
+        
+        self.donnees_fusionnees = df
+        return df
+    
+    def detecter_outliers_iqr(self, df=None, colonnes=None, multiplicateur=1.5):
+        """
+        Détecte et traite les outliers en utilisant la méthode IQR.
+        
+        Args:
+            df (pd.DataFrame): DataFrame à analyser
+            colonnes (list): Liste des colonnes numériques à traiter
+            multiplicateur (float): Multiplicateur pour la détection IQR
+            
+        Returns:
+            pd.DataFrame: DataFrame avec outliers traités
+        """
+        print(f"\n=== DETECTION DES OUTLIERS (IQR, multiplicateur={multiplicateur}) ===")
+        
+        if df is None:
+            df = self.donnees_fusionnees.copy()
+        
+        if df is None:
+            print("Aucun dataset disponible pour la détection d'outliers")
+            return None
+        
+        if colonnes is None:
+            colonnes = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        outliers_total = 0
+        
+        for colonne in colonnes:
+            if colonne not in df.columns:
+                continue
+                
+            Q1 = df[colonne].quantile(0.25)
+            Q3 = df[colonne].quantile(0.75)
+            IQR = Q3 - Q1
+            
+            limite_inferieure = Q1 - multiplicateur * IQR
+            limite_superieure = Q3 + multiplicateur * IQR
+            
+            outliers = df[(df[colonne] < limite_inferieure) | (df[colonne] > limite_superieure)]
+            nombre_outliers = len(outliers)
+            outliers_total += nombre_outliers
+            
+            if nombre_outliers > 0:
+                print(f"Colonne '{colonne}': {nombre_outliers} outliers détectés")
+                # Remplacer les outliers par les limites
+                df.loc[df[colonne] < limite_inferieure, colonne] = limite_inferieure
+                df.loc[df[colonne] > limite_superieure, colonne] = limite_superieure
+            else:
+                print(f"Colonne '{colonne}': Aucun outlier détecté")
+        
+        print(f"Total outliers traités: {outliers_total}")
+        self.donnees_fusionnees = df
+        return df
+    
+    def creer_features_derivees(self, df=None):
+        """
+        Crée des features dérivées (moyennes, ratios, features polynomiales, etc.).
+        
+        Args:
+            df (pd.DataFrame): DataFrame de base
+            
+        Returns:
+            pd.DataFrame: DataFrame avec nouvelles features
+        """
+        print("\n=== CREATION DE FEATURES DERIVEES ===")
+        
+        if df is None:
+            df = self.donnees_fusionnees.copy()
+        
+        if df is None:
+            print("Aucun dataset disponible pour la création de features")
+            return None
+        
+        df_new = df.copy()
+        colonnes_numeriques = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        # 1. Moyennes et médianes par groupes
+        if len(colonnes_numeriques) >= 2:
+            for i in range(0, len(colonnes_numeriques), 2):
+                if i+1 < len(colonnes_numeriques):
+                    col1, col2 = colonnes_numeriques[i], colonnes_numeriques[i+1]
+                    df_new[f'{col1}_{col2}_mean'] = (df[col1] + df[col2]) / 2
+                    df_new[f'{col1}_{col2}_ratio'] = df[col1] / (df[col2] + 1e-8)  # Éviter la division par zéro
+        
+        # 2. Statistiques rolling (si données temporelles)
+        for col in colonnes_numeriques[:3]:  # Sur les 3 premières colonnes numériques
+            if len(df) > 10:  # Minimum 10 observations
+                df_new[f'{col}_rolling_mean_3'] = df[col].rolling(window=3, min_periods=1).mean()
+                df_new[f'{col}_rolling_std_3'] = df[col].rolling(window=3, min_periods=1).std()
+        
+        # 3. Features polynomiales pour la première colonne numérique
+        if colonnes_numeriques:
+            col_principale = colonnes_numeriques[0]
+            poly = PolynomialFeatures(degree=2, include_bias=False)
+            X_poly = poly.fit_transform(df[[col_principale]].fillna(df[col_principale].median()))
+            
+            for i in range(X_poly.shape[1]):
+                if i > 0:  # Sauter la première colonne (redondante)
+                    df_new[f'{col_principale}_poly_{i}'] = X_poly[:, i]
+        
+        # 4. Features de log et sqrt
+        for col in colonnes_numeriques[:2]:
+            if (df[col] > 0).all():
+                df_new[f'{col}_log'] = np.log(df[col])
+                df_new[f'{col}_sqrt'] = np.sqrt(df[col])
+        
+        # 5. Composantes principales (PCA)
+        if len(colonnes_numeriques) >= 3:
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(df[colonnes_numeriques].fillna(df[colonnes_numeriques].median()))
+            
+            pca = PCA(n_components=min(3, len(colonnes_numeriques)))
+            X_pca = pca.fit_transform(X_scaled)
+            
+            for i in range(X_pca.shape[1]):
+                df_new[f'PC_{i+1}'] = X_pca[:, i]
+        
+        self.donnees_fusionnees = df_new
+        print(f"✓ Nouvelles features créées: {len(df_new.columns) - len(df.columns)}")
+        print(f"Total colonnes: {len(df_new.columns)}")
+        
+        return df_new
+    
+    def exporter_csv(self, df=None, nom_fichier='donnees_finale.csv'):
+        """
+        Exporte les données vers un fichier CSV.
+        
+        Args:
+            df (pd.DataFrame): DataFrame à exporter
+            nom_fichier (str): Nom du fichier de sortie
+            
+        Returns:
+            str: Chemin du fichier créé
+        """
+        if df is None:
+            df = self.donnees_fusionnees
+        
+        if df is None:
+            print("Aucun dataset disponible pour l'export")
+            return None
+        
+        chemin_complet = f'resultats/{nom_fichier}'
+        df.to_csv(chemin_complet, index=False)
+        print(f"✓ Export CSV réussi: {chemin_complet}")
+        return chemin_complet
+    
+    def exporter_excel_formate(self, df=None, nom_fichier='donnees_finale.xlsx'):
+        """
+        Exporte les données vers un fichier Excel avec mise en forme.
+        
+        Args:
+            df (pd.DataFrame): DataFrame à exporter
+            nom_fichier (str): Nom du fichier de sortie
+            
+        Returns:
+            str: Chemin du fichier créé
+        """
+        print("\n=== EXPORT EXCEL AVEC MISE EN FORME ===")
+        
+        if df is None:
+            df = self.donnees_fusionnees
+        
+        if df is None:
+            print("Aucun dataset disponible pour l'export")
+            return None
+        
+        chemin_complet = f'resultats/{nom_fichier}'
+        
+        # Créer un writer Excel avec xlsxwriter
+        with pd.ExcelWriter(chemin_complet, engine='xlsxwriter') as writer:
+            # Écrire les données
+            df.to_excel(writer, sheet_name='Donnees', index=False)
+            
+            # Obtenir le workbook et worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Donnees']
+            
+            # Définir des formats
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'top',
+                'fg_color': '#4472C4',
+                'font_color': 'white',
+                'border': 1
+            })
+            
+            nombre_format = workbook.add_format({
+                'num_format': '#,##0.00',
+                'border': 1
+            })
+            
+            date_format = workbook.add_format({
+                'num_format': 'dd/mm/yyyy',
+                'border': 1
+            })
+            
+            # Appliquer le format d'en-tête
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Ajuster la largeur des colonnes
+            for i, col in enumerate(df.columns):
+                max_length = max(df[col].astype(str).map(len).max(), len(col)) + 2
+                worksheet.set_column(i, i, min(max_length, 50))
+            
+            # Appliquer le format numérique aux colonnes numériques
+            colonnes_numeriques = df.select_dtypes(include=[np.number]).columns
+            for col in colonnes_numeriques:
+                col_idx = df.columns.get_loc(col)
+                worksheet.set_column(col_idx, col_idx, 15, nombre_format)
+            
+            # Ajouter des formats conditionnels
+            if not df.empty:
+                # Format conditionnel pour les valeurs extrêmes
+                for col_idx, col in enumerate(df.columns):
+                    if col in colonnes_numeriques:
+                        # Définir la plage de données (sans l'en-tête)
+                        premiere_ligne = 1
+                        derniere_ligne = len(df)
+                        
+                        # Ajouter un format conditionnel pour les valeurs > moyenne + 2*écart-type
+                        if len(df[col].dropna()) > 0:
+                            moyenne = df[col].mean()
+                            ecart_type = df[col].std()
+                            if ecart_type > 0:
+                                valeur_seuil = moyenne + 2 * ecart_type
+                                worksheet.conditional_format(
+                                    premiere_ligne, col_idx, derniere_ligne, col_idx,
+                                    {
+                                        'type': 'cell',
+                                        'criteria': '>',
+                                        'value': valeur_seuil,
+                                        'format': workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+                                    }
+                                )
+            
+            # Ajouter une deuxième feuille avec des statistiques
+            stats_df = df.describe()
+            stats_df.to_excel(writer, sheet_name='Statistiques')
+            
+            # Formater la feuille de statistiques
+            stats_worksheet = writer.sheets['Statistiques']
+            stats_worksheet.set_column(0, 0, 20)  # Largeur pour les noms de statistiques
+            
+            # Formater les en-têtes de colonnes dans la feuille statistiques
+            for col_num, value in enumerate(stats_df.columns.values):
+                stats_worksheet.write(0, col_num + 1, value, header_format)
+            
+            # Ajouter une feuille avec les informations sur les données manquantes
+            missing_info = pd.DataFrame({
+                'Colonne': df.columns,
+                'Valeurs_Manquantes': df.isnull().sum(),
+                'Pourcentage_Manquant': (df.isnull().sum() / len(df)) * 100,
+                'Type_Donnees': df.dtypes.astype(str)
+            })
+            missing_info.to_excel(writer, sheet_name='Infos_Donnees', index=False)
+            
+            # Formater la feuille d'infos
+            infos_worksheet = writer.sheets['Infos_Donnees']
+            for col_num, value in enumerate(missing_info.columns.values):
+                infos_worksheet.write(0, col_num, value, header_format)
+            infos_worksheet.set_column(0, 3, 20)
+        
+        print(f"✓ Export Excel formaté réussi: {chemin_complet}")
+        print("✓ Mise en forme appliquée: en-têtes colorés, colonnes ajustées, formats conditionnels")
+        return chemin_complet
+    
+    def creer_visualisations(self, df=None):
+        """
+        Crée des visualisations avec matplotlib et seaborn.
+        
+        Args:
+            df (pd.DataFrame): DataFrame à visualiser
+        """
+        print("\n=== CREATION DES VISUALISATIONS ===")
+        
+        if df is None:
+            df = self.donnees_fusionnees
+        
+        if df is None:
+            print("Aucun dataset disponible pour les visualisations")
+            return
+        
+        # Créer le dossier pour les images
+        os.makedirs('resultats/visualisations', exist_ok=True)
+        
+        # Sélectionner uniquement les colonnes numériques
+        colonnes_numeriques = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if len(colonnes_numeriques) == 0:
+            print("Aucune colonne numérique trouvée pour les visualisations")
+            return
+        
+        # 1. Matrice de corrélation
+        if len(colonnes_numeriques) >= 2:
+            plt.figure(figsize=(12, 10))
+            correlation_matrix = df[colonnes_numeriques].corr()
+            sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0, 
+                       square=True, linewidths=0.5)
+            plt.title('Matrice de Corrélation', fontsize=16, fontweight='bold')
+            plt.tight_layout()
+            plt.savefig('resultats/visualisations/correlation_matrix.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            print("✓ Matrice de corrélation créée")
+        
+        # 2. Distribution des variables
+        n_cols = min(3, len(colonnes_numeriques))
+        n_rows = (min(len(colonnes_numeriques), 9) + n_cols - 1) // n_cols
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
+        if n_rows == 1:
+            axes = axes.reshape(1, -1)
+        
+        for i, col in enumerate(colonnes_numeriques[:n_rows*n_cols]):
+            row, col_idx = divmod(i, n_cols)
+            axes[row, col_idx].hist(df[col].dropna(), bins=30, alpha=0.7, color='skyblue', edgecolor='black')
+            axes[row, col_idx].set_title(f'Distribution de {col}', fontweight='bold')
+            axes[row, col_idx].set_xlabel(col)
+            axes[row, col_idx].set_ylabel('Fréquence')
+            axes[row, col_idx].grid(True, alpha=0.3)
+        
+        # Supprimer les sous-graphiques vides
+        for j in range(i+1, n_rows*n_cols):
+            row, col_idx = divmod(j, n_cols)
+            axes[row, col_idx].remove()
+        
+        plt.suptitle('Distributions des Variables Numériques', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig('resultats/visualisations/distributions.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print("✓ Distributions créées")
+        
+        # 3. Boxplots pour détecter les outliers
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
+        if n_rows == 1:
+            axes = axes.reshape(1, -1)
+        
+        for i, col in enumerate(colonnes_numeriques[:n_rows*n_cols]):
+            row, col_idx = divmod(i, n_cols)
+            sns.boxplot(data=df, y=col, ax=axes[row, col_idx], color='lightblue')
+            axes[row, col_idx].set_title(f'Boxplot de {col}', fontweight='bold')
+            axes[row, col_idx].grid(True, alpha=0.3)
+        
+        # Supprimer les sous-graphiques vides
+        for j in range(i+1, n_rows*n_cols):
+            row, col_idx = divmod(j, n_cols)
+            axes[row, col_idx].remove()
+        
+        plt.suptitle('Boxplots des Variables Numériques', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig('resultats/visualisations/boxplots.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print("✓ Boxplots créés")
+        
+        # 4. Scatter plots pour les relations entre variables
+        if len(colonnes_numeriques) >= 2:
+            n_pairs = min(6, len(colonnes_numeriques) * (len(colonnes_numeriques) - 1) // 2)
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            
+            pairs = []
+            for i in range(len(colonnes_numeriques)):
+                for j in range(i+1, len(colonnes_numeriques)):
+                    pairs.append((colonnes_numeriques[i], colonnes_numeriques[j]))
+            
+            for i, (col1, col2) in enumerate(pairs[:6]):
+                row, col_idx = divmod(i, 3)
+                axes[row, col_idx].scatter(df[col1], df[col2], alpha=0.6, color='coral')
+                axes[row, col_idx].set_xlabel(col1)
+                axes[row, col_idx].set_ylabel(col2)
+                axes[row, col_idx].set_title(f'{col1} vs {col2}', fontweight='bold')
+                axes[row, col_idx].grid(True, alpha=0.3)
+            
+            # Supprimer les sous-graphiques vides
+            for j in range(i+1, 6):
+                row, col_idx = divmod(j, 3)
+                axes[row, col_idx].remove()
+            
+            plt.suptitle('Relations entre Variables', fontsize=16, fontweight='bold')
+            plt.tight_layout()
+            plt.savefig('resultats/visualisations/scatter_plots.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            print("✓ Scatter plots créés")
+        
+        # 5. Pairplot si peu de variables
+        if 2 <= len(colonnes_numeriques) <= 5:
+            plt.figure(figsize=(12, 10))
+            sns.pairplot(df[colonnes_numeriques], diag_kind='hist', plot_kws={'alpha': 0.6})
+            plt.suptitle('Pairplot des Variables Numériques', y=1.02, fontsize=16, fontweight='bold')
+            plt.savefig('resultats/visualisations/pairplot.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            print("✓ Pairplot créé")
+        
+        print("✓ Toutes les visualisations ont été créées dans le dossier 'resultats/visualisations/'")
+    
+    def transformer_donnees(self, methode_nettoyage='median'):
+        """
+        Effectue toutes les transformations sur les données.
+        
+        Args:
+            methode_nettoyage (str): Méthode pour le nettoyage des valeurs manquantes
+            
+        Returns:
+            pd.DataFrame: Données transformées
+        """
+        print("\n=== PHASE DE TRANSFORMATION ===")
+        
+        if self.donnees_fusionnees is None:
+            print("Aucun dataset fusionné disponible pour la transformation")
+            return None
+        
+        # Nettoyer les valeurs manquantes
+        self.nettoyer_valeurs_manquantes(methode=methode_nettoyage)
+        
+        # Détecter et traiter les outliers
+        self.detecter_outliers_iqr()
+        
+        # Créer des features dérivées
+        self.creer_features_derivees()
+        
+        self.donnees_finale = self.donnees_fusionnees.copy()
+        print(f"✓ Transformation complète: {self.donnees_finale.shape}")
+        
+        return self.donnees_finale
+    
+    def charger_donnees(self, exporter_csv=True, exporter_excel=True, creer_viz=True):
+        """
+        Charge les données finales et exporte vers différents formats.
+        
+        Args:
+            exporter_csv (bool): Exporter vers CSV
+            exporter_excel (bool): Exporter vers Excel avec mise en forme
+            creer_viz (bool): Créer des visualisations
+            
+        Returns:
+            dict: Dictionnaire avec les chemins des fichiers créés
+        """
+        print("\n=== PHASE DE CHARGEMENT ===")
+        
+        if self.donnees_finale is None:
+            print("Aucune donnée finale disponible pour le chargement")
+            return {}
+        
+        fichiers_crees = {}
+        
+        # Exporter vers CSV
+        if exporter_csv:
+            chemin_csv = self.exporter_csv(self.donnees_finale, 'donnees_finale.csv')
+            if chemin_csv:
+                fichiers_crees['csv'] = chemin_csv
+        
+        # Exporter vers Excel
+        if exporter_excel:
+            chemin_excel = self.exporter_excel_formate(self.donnees_finale, 'donnees_finale_formate.xlsx')
+            if chemin_excel:
+                fichiers_crees['excel'] = chemin_excel
+        
+        # Créer des visualisations
+        if creer_viz:
+            self.creer_visualisations(self.donnees_finale)
+            fichiers_crees['visualisations'] = 'resultats/visualisations/'
+        
+        print(f"✓ Chargement terminé. Fichiers créés: {list(fichiers_crees.keys())}")
+        return fichiers_crees
+    
+    def executer_pipeline_complet(self, fusion_type='concat', **kwargs):
+        """
+        Exécute le pipeline ETL complet.
+        
+        Args:
+            fusion_type (str): Type de fusion ('concat' ou 'merge')
+            **kwargs: Arguments supplémentaires pour la fusion
+            
+        Returns:
+            dict: Résultats du pipeline
+        """
+        print("=" * 60)
+        print("PIPELINE ETL COMPLET - DÉBUT")
+        print("=" * 60)
+        
+        try:
+            # 1. Extraction
+            self.extraire_donnees()
+            
+            if not self.donnees:
+                print("Aucune donnée extraite. Arrêt du pipeline.")
+                return None
+            
+            # 2. Fusion
+            if fusion_type == 'concat':
+                self.fusion_datasets_concat(**kwargs)
+            elif fusion_type == 'merge':
+                if 'dataset1_key' in kwargs and 'dataset2_key' in kwargs:
+                    self.fusion_datasets_merge(**kwargs)
+                else:
+                    print("Paramètres manquants pour la fusion par merge")
+                    self.fusion_datasets_concat()
+            
+            if self.donnees_fusionnees is None:
+                print("Aucune donnée fusionnée disponible. Arrêt du pipeline.")
+                return None
+            
+            # 3. Transformation
+            self.transformer_donnees()
+            
+            if self.donnees_finale is None:
+                print("Aucune donnée transformée disponible. Arrêt du pipeline.")
+                return None
+            
+            # 4. Chargement
+            fichiers_crees = self.charger_donnees()
+            
+            # Résumé
+            print("\n" + "=" * 60)
+            print("RÉSUMÉ DU PIPELINE ETL")
+            print("=" * 60)
+            print(f"Datasets extraits: {len(self.donnees)}")
+            print(f"Dimensions finales: {self.donnees_finale.shape}")
+            print(f"Fichiers créés: {len(fichiers_crees)}")
+            
+            resultats = {
+                'datasets_originaux': self.donnees,
+                'donnees_finale': self.donnees_finale,
+                'fichiers_crees': fichiers_crees,
+                'statistiques': {
+                    'n_datasets': len(self.donnees),
+                    'n_lignes_finale': len(self.donnees_finale),
+                    'n_colonnes_finale': len(self.donnees_finale.columns),
+                    'n_fichiers_exportes': len(fichiers_crees)
+                }
+            }
+            
+            print("✓ PIPELINE ETL TERMINÉ AVEC SUCCÈS")
+            return resultats
+            
+        except Exception as e:
+            print(f"✗ ERREUR DANS LE PIPELINE: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+
+# Exemple d'utilisation
+if __name__ == "__main__":
+    # Créer et exécuter le pipeline
+    pipeline = PipelineETLComplet(dossier_donnees='donnees/')
+    
+    # Exécuter le pipeline complet avec fusion par concaténation
+    resultats = pipeline.executer_pipeline_complet(fusion_type='concat')
+    
+    if resultats:
+        print("\nPipeline exécuté avec succès!")
+        print(f"Données finales: {resultats['statistiques']['n_lignes_finale']} lignes, "
+              f"{resultats['statistiques']['n_colonnes_finale']} colonnes")
+    else:
+        print("Échec de l'exécution du pipeline")
