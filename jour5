@@ -1,0 +1,1251 @@
+import random
+from enum import Enum
+from typing import List, Tuple, Dict, Optional
+from collections import Counter
+import time
+
+
+class Couleur(Enum):
+    """Énumération des couleurs de cartes."""
+    COEUR = "♥"
+    CARREAU = "♦"
+    TREFLE = "♣"
+    PIQUE = "♠"
+
+
+class Valeur(Enum):
+    """Énumération des valeurs de cartes."""
+    DEUX = "2"
+    TROIS = "3"
+    QUATRE = "4"
+    CINQ = "5"
+    SIX = "6"
+    SEPT = "7"
+    HUIT = "8"
+    NEUF = "9"
+    DIX = "10"
+    VALET = "V"
+    DAME = "D"
+    ROI = "R"
+    AS = "A"
+    
+    def rang(self) -> int:
+        """Retourne le rang numérique de la carte."""
+        ordre = {
+            "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+            "10": 10, "V": 11, "D": 12, "R": 13, "A": 14
+        }
+        return ordre[self.value]
+
+
+class Carte:
+    """Représente une carte à jouer."""
+    
+    def __init__(self, valeur: Valeur, couleur: Couleur):
+        """
+        Initialise une carte.
+        
+        Args:
+            valeur: La valeur de la carte (2, 3, ..., As)
+            couleur: La couleur de la carte (Coeur, Carreau, Trèfle, Pique)
+        """
+        self.valeur = valeur
+        self.couleur = couleur
+    
+    def __str__(self) -> str:
+        """Représentation textuelle de la carte."""
+        return f"{self.valeur.value}{self.couleur.value}"
+    
+    def __repr__(self) -> str:
+        return self.__str__()
+    
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Carte):
+            return False
+        return self.valeur == other.valeur and self.couleur == other.couleur
+    
+    def ascii(self) -> List[str]:
+        """
+        Retourne une représentation ASCII de la carte.
+        
+        Returns:
+            Liste de chaînes formant l'image ASCII de la carte
+        """
+        couleur_code = {
+            Couleur.COEUR: '\033[91m',    # Rouge
+            Couleur.CARREAU: '\033[91m',  # Rouge
+            Couleur.TREFLE: '\033[90m',   # Gris (noir)
+            Couleur.PIQUE: '\033[90m'     # Gris (noir)
+        }
+        reset = '\033[0m'
+        
+        couleur_ascii = couleur_code[self.couleur]
+        valeur = self.valeur.value.rjust(2)
+        
+        return [
+            f"┌─────┐",
+            f"│{valeur}  │",
+            f"│ {couleur_ascii}{self.couleur.value}{reset} │",
+            f"│  {valeur}│",
+            f"└─────┘"
+        ]
+    
+    def rang(self) -> int:
+        """Retourne le rang numérique pour les comparaisons."""
+        return self.valeur.rang()
+
+
+class Deck:
+    """Représente un jeu de 52 cartes."""
+    
+    def __init__(self):
+        """Initialise un deck avec 52 cartes."""
+        self.cartes = []
+        self.defausse = []
+        self.reinitialiser()
+    
+    def reinitialiser(self):
+        """Réinitialise le deck avec toutes les cartes."""
+        self.cartes = []
+        for couleur in Couleur:
+            for valeur in Valeur:
+                self.cartes.append(Carte(valeur, couleur))
+        self.defausse = []
+        self.melanger()
+    
+    def melanger(self):
+        """Mélange le deck."""
+        random.shuffle(self.cartes)
+    
+    def piocher(self, nombre: int = 1) -> List[Carte]:
+        """
+        Pioche un nombre de cartes du deck.
+        
+        Args:
+            nombre: Nombre de cartes à piocher
+            
+        Returns:
+            Liste des cartes piochées
+        """
+        if nombre > len(self.cartes):
+            # Recycle la défausse si nécessaire
+            self.cartes.extend(self.defausse)
+            self.defausse = []
+            self.melanger()
+        
+        cartes_piochees = []
+        for _ in range(nombre):
+            if self.cartes:
+                carte = self.cartes.pop()
+                cartes_piochees.append(carte)
+        
+        return cartes_piochees
+    
+    def defausser(self, cartes: List[Carte]):
+        """
+        Défausse des cartes.
+        
+        Args:
+            cartes: Liste des cartes à défausser
+        """
+        self.defausse.extend(cartes)
+
+
+class Main:
+    """Représente une main de poker (2 cartes)."""
+    
+    def __init__(self):
+        """Initialise une main vide."""
+        self.cartes = []
+    
+    def ajouter_carte(self, carte: Carte):
+        """
+        Ajoute une carte à la main.
+        
+        Args:
+            carte: Carte à ajouter
+        """
+        if len(self.cartes) < 2:
+            self.cartes.append(carte)
+    
+    def vider(self):
+        """Vide la main."""
+        self.cartes = []
+    
+    def __str__(self) -> str:
+        return ", ".join(str(carte) for carte in self.cartes)
+    
+    def ascii(self) -> List[str]:
+        """
+        Retourne une représentation ASCII des cartes.
+        
+        Returns:
+            Liste des lignes ASCII des cartes côte à côte
+        """
+        if not self.cartes:
+            return ["[Main vide]"]
+        
+        # Obtenir l'ASCII de chaque carte
+        cartes_ascii = [carte.ascii() for carte in self.cartes]
+        
+        # Combiner les cartes côte à côte
+        resultat = []
+        for i in range(5):  # Chaque carte a 5 lignes
+            ligne = " ".join(carte[i] for carte in cartes_ascii)
+            resultat.append(ligne)
+        
+        return resultat
+    
+    def meilleure_combinaison(self, community: List[Carte]) -> Tuple[str, List[int], List[Carte]]:
+        """
+        Évalue la meilleure combinaison avec les cartes communes.
+        
+        Args:
+            community: Cartes communes (flop, turn, river)
+            
+        Returns:
+            Tuple (nom_combinaison, rangs, cartes_combinaison)
+        """
+        toutes_cartes = self.cartes + community
+        return EvaluateurMains.evaluer(toutes_cartes)
+
+
+class Joueur:
+    """Représente un joueur de poker."""
+    
+    def __init__(self, nom: str, est_bot: bool = False, jetons: int = 1000):
+        """
+        Initialise un joueur.
+        
+        Args:
+            nom: Nom du joueur
+            est_bot: True si c'est un bot
+            jetons: Jetons de départ
+        """
+        self.nom = nom
+        self.est_bot = est_bot
+        self.jetons = jetons
+        self.main = Main()
+        self.mise_actuelle = 0
+        self.a_couche = False
+        self.est_all_in = False
+    
+    def recevoir_carte(self, carte: Carte):
+        """Reçoit une carte."""
+        self.main.ajouter_carte(carte)
+    
+    def vider_main(self):
+        """Vide la main du joueur."""
+        self.main.vider()
+    
+    def reset_pour_manche(self):
+        """Réinitialise le joueur pour une nouvelle manche."""
+        self.mise_actuelle = 0
+        self.a_couche = False
+        self.est_all_in = False
+        self.vider_main()
+    
+    def miser(self, montant: int) -> int:
+        """
+        Mise un certain montant.
+        
+        Args:
+            montant: Montant à miser
+            
+        Returns:
+            Montant réellement misé
+        """
+        mise_reelle = min(montant, self.jetons)
+        self.jetons -= mise_reelle
+        self.mise_actuelle += mise_reelle
+        
+        if self.jetons == 0:
+            self.est_all_in = True
+        
+        return mise_reelle
+    
+    def se_coucher(self):
+        """Le joueur se couche."""
+        self.a_couche = True
+    
+    def est_actif(self) -> bool:
+        """Vérifie si le joueur est toujours en jeu."""
+        return not self.a_couche and not self.est_all_in
+    
+    def __str__(self) -> str:
+        status = ""
+        if self.a_couche:
+            status = " (couché)"
+        elif self.est_all_in:
+            status = " (ALL-IN)"
+        return f"{self.nom}{status}: {self.jetons} jetons"
+
+
+class EvaluateurMains:
+    """Évaluateur de mains de poker."""
+    
+    # Ordre des combinaisons (du plus faible au plus fort)
+    COMBINAISONS = [
+        "Carte haute",
+        "Paire",
+        "Double paire",
+        "Brelan",
+        "Quinte",
+        "Couleur",
+        "Full house",
+        "Carré",
+        "Quinte flush",
+        "Quinte flush royale"
+    ]
+    
+    @classmethod
+    def evaluer(cls, cartes: List[Carte]) -> Tuple[str, List[int], List[Carte]]:
+        """
+        Évalue la meilleure combinaison parmi les cartes.
+        
+        Args:
+            cartes: Liste des cartes à évaluer (7 maximum)
+            
+        Returns:
+            Tuple (nom_combinaison, rangs, cartes_combinaison)
+        """
+        # Trier les cartes par rang décroissant
+        cartes_triees = sorted(cartes, key=lambda c: c.rang(), reverse=True)
+        
+        # Vérifier chaque type de combinaison (de la plus forte à la plus faible)
+        verificateurs = [
+            (cls._est_quinte_flush_royale, "Quinte flush royale"),
+            (cls._est_quinte_flush, "Quinte flush"),
+            (cls._est_carre, "Carré"),
+            (cls._est_full, "Full house"),
+            (cls._est_couleur, "Couleur"),
+            (cls._est_quinte, "Quinte"),
+            (cls._est_brelan, "Brelan"),
+            (cls._est_double_paire, "Double paire"),
+            (cls._est_paire, "Paire"),
+        ]
+        
+        for verificateur, nom in verificateurs:
+            resultat = verificateur(cartes_triees)
+            if resultat:
+                return nom, resultat[0], resultat[1]
+        
+        # Carte haute
+        rangs = [c.rang() for c in cartes_triees[:5]]
+        return "Carte haute", rangs, cartes_triees[:5]
+    
+    @staticmethod
+    def _est_paire(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si une paire est présente."""
+        compteur = Counter(c.rang() for c in cartes)
+        paires = [r for r, count in compteur.items() if count == 2]
+        
+        if paires:
+            # Prendre la meilleure paire
+            paire_max = max(paires)
+            autres = sorted([r for r in compteur if r != paire_max], reverse=True)[:3]
+            rangs = [paire_max] * 2 + autres
+            
+            # Construire la main
+            main = []
+            for c in cartes:
+                if c.rang() == paire_max and len([m for m in main if m.rang() == paire_max]) < 2:
+                    main.append(c)
+            for r in autres:
+                for c in cartes:
+                    if c.rang() == r and c not in main:
+                        main.append(c)
+                        break
+            
+            return rangs, main[:5]
+        return None
+    
+    @staticmethod
+    def _est_double_paire(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si une double paire est présente."""
+        compteur = Counter(c.rang() for c in cartes)
+        paires = [r for r, count in compteur.items() if count == 2]
+        
+        if len(paires) >= 2:
+            paires.sort(reverse=True)
+            top_paires = paires[:2]
+            kicker = max([r for r in compteur if r not in top_paires], default=0)
+            rangs = top_paires * 2 + [kicker]
+            
+            # Construire la main
+            main = []
+            for r in top_paires:
+                for c in cartes:
+                    if c.rang() == r and len([m for m in main if m.rang() == r]) < 2:
+                        main.append(c)
+            if kicker:
+                for c in cartes:
+                    if c.rang() == kicker and c not in main:
+                        main.append(c)
+                        break
+            
+            return rangs, main[:5]
+        return None
+    
+    @staticmethod
+    def _est_brelan(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si un brelan est présent."""
+        compteur = Counter(c.rang() for c in cartes)
+        brelans = [r for r, count in compteur.items() if count == 3]
+        
+        if brelans:
+            brelan_max = max(brelans)
+            autres = sorted([r for r in compteur if r != brelan_max], reverse=True)[:2]
+            rangs = [brelan_max] * 3 + autres
+            
+            # Construire la main
+            main = []
+            for c in cartes:
+                if c.rang() == brelan_max and len([m for m in main if m.rang() == brelan_max]) < 3:
+                    main.append(c)
+            for r in autres:
+                for c in cartes:
+                    if c.rang() == r and c not in main:
+                        main.append(c)
+                        break
+            
+            return rangs, main[:5]
+        return None
+    
+    @staticmethod
+    def _est_quinte(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si une quinte est présente."""
+        rangs_uniques = sorted(set(c.rang() for c in cartes), reverse=True)
+        
+        # Vérifier la quinte avec As comme 1 (A,2,3,4,5)
+        if 14 in rangs_uniques:  # As
+            rangs_as_1 = [5, 4, 3, 2, 1]
+            if all(r in [x if x != 14 else 1 for x in rangs_uniques] for r in rangs_as_1):
+                rangs = [5, 4, 3, 2, 1]
+                # Construire la main
+                main = []
+                for r in [5, 4, 3, 2, 14]:  # As pour la carte
+                    for c in cartes:
+                        if (c.rang() == r or (r == 14 and c.rang() == 14)) and c not in main:
+                            main.append(c)
+                            break
+                return [5], main
+        
+        # Vérifier les quintes normales
+        for i in range(len(rangs_uniques) - 4):
+            if rangs_uniques[i] - rangs_uniques[i+4] == 4:
+                rangs_quinte = rangs_uniques[i:i+5]
+                # Construire la main
+                main = []
+                for r in rangs_quinte:
+                    for c in cartes:
+                        if c.rang() == r and c not in main:
+                            main.append(c)
+                            break
+                return rangs_quinte, main
+        return None
+    
+    @staticmethod
+    def _est_couleur(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si une couleur est présente."""
+        couleurs = Counter(c.couleur for c in cartes)
+        couleur_max = max(couleurs.items(), key=lambda x: x[1])
+        
+        if couleur_max[1] >= 5:
+            cartes_couleur = [c for c in cartes if c.couleur == couleur_max[0]]
+            cartes_couleur.sort(key=lambda c: c.rang(), reverse=True)
+            rangs = [c.rang() for c in cartes_couleur[:5]]
+            return rangs, cartes_couleur[:5]
+        return None
+    
+    @staticmethod
+    def _est_full(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si un full est présent."""
+        compteur = Counter(c.rang() for c in cartes)
+        brelans = [r for r, count in compteur.items() if count >= 3]
+        paires = [r for r, count in compteur.items() if count >= 2 and r not in brelans]
+        
+        if brelans and paires:
+            brelan_max = max(brelans)
+            paire_max = max(paires)
+            rangs = [brelan_max] * 3 + [paire_max] * 2
+            
+            # Construire la main
+            main = []
+            for c in cartes:
+                if c.rang() == brelan_max and len([m for m in main if m.rang() == brelan_max]) < 3:
+                    main.append(c)
+            for c in cartes:
+                if c.rang() == paire_max and len([m for m in main if m.rang() == paire_max]) < 2:
+                    main.append(c)
+            
+            return rangs, main[:5]
+        return None
+    
+    @staticmethod
+    def _est_carre(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si un carré est présent."""
+        compteur = Counter(c.rang() for c in cartes)
+        carres = [r for r, count in compteur.items() if count == 4]
+        
+        if carres:
+            carre_max = max(carres)
+            kicker = max([r for r in compteur if r != carre_max], default=0)
+            rangs = [carre_max] * 4 + [kicker]
+            
+            # Construire la main
+            main = []
+            for c in cartes:
+                if c.rang() == carre_max:
+                    main.append(c)
+            if kicker:
+                for c in cartes:
+                    if c.rang() == kicker and c not in main:
+                        main.append(c)
+                        break
+            
+            return rangs, main[:5]
+        return None
+    
+    @staticmethod
+    def _est_quinte_flush(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si une quinte flush est présente."""
+        # Grouper par couleur
+        for couleur in Couleur:
+            cartes_couleur = [c for c in cartes if c.couleur == couleur]
+            if len(cartes_couleur) >= 5:
+                # Vérifier la quinte dans cette couleur
+                resultat = EvaluateurMains._est_quinte(cartes_couleur)
+                if resultat:
+                    return resultat
+        return None
+    
+    @staticmethod
+    def _est_quinte_flush_royale(cartes: List[Carte]) -> Optional[Tuple[List[int], List[Carte]]]:
+        """Vérifie si une quinte flush royale est présente."""
+        resultat = EvaluateurMains._est_quinte_flush(cartes)
+        if resultat and resultat[0][0] == 14:  # As est la carte haute
+            return resultat
+        return None
+    
+    @classmethod
+    def comparer(cls, main1: Tuple[str, List[int], List[Carte]], 
+                main2: Tuple[str, List[int], List[Carte]]) -> int:
+        """
+        Compare deux mains.
+        
+        Args:
+            main1: Première main évaluée
+            main2: Deuxième main évaluée
+            
+        Returns:
+            1 si main1 > main2, -1 si main1 < main2, 0 si égalité
+        """
+        nom1, rangs1, _ = main1
+        nom2, rangs2, _ = main2
+        
+        idx1 = cls.COMBINAISONS.index(nom1)
+        idx2 = cls.COMBINAISONS.index(nom2)
+        
+        if idx1 > idx2:
+            return 1
+        elif idx1 < idx2:
+            return -1
+        
+        # Même type de combinaison, comparer les rangs
+        for r1, r2 in zip(rangs1, rangs2):
+            if r1 > r2:
+                return 1
+            elif r1 < r2:
+                return -1
+        
+        return 0
+
+
+class SimulateurMonteCarlo:
+    """Simulateur Monte Carlo pour calculer les probabilités au poker."""
+    
+    def __init__(self, deck: Deck):
+        """
+        Initialise le simulateur.
+        
+        Args:
+            deck: Deck de cartes
+        """
+        self.deck = deck
+    
+    def simuler_equite(self, main_joueur: Main, cartes_communes: List[Carte], 
+                       nombre_joueurs: int, iterations: int = 1000) -> float:
+        """
+        Simule l'équité d'une main.
+        
+        Args:
+            main_joueur: Main du joueur
+            cartes_communes: Cartes communes déjà révélées
+            nombre_joueurs: Nombre total de joueurs
+            iterations: Nombre d'itérations Monte Carlo
+            
+        Returns:
+            Probabilité de gagner (entre 0 et 1)
+        """
+        victoires = 0
+        egalites = 0
+        
+        cartes_connues = main_joueur.cartes + cartes_communes
+        cartes_restantes = [c for c in self.deck.cartes if c not in cartes_connues]
+        
+        for _ in range(iterations):
+            # Mélanger les cartes restantes
+            random.shuffle(cartes_restantes)
+            
+            # Compléter les cartes communes
+            cartes_communes_completes = cartes_communes.copy()
+            nb_manquantes = 5 - len(cartes_communes)
+            if nb_manquantes > 0 and len(cartes_restantes) >= nb_manquantes:
+                cartes_communes_completes.extend(cartes_restantes[:nb_manquantes])
+            
+            # Évaluer la main du joueur
+            main_joueur_evaluee = EvaluateurMains.evaluer(
+                main_joueur.cartes + cartes_communes_completes
+            )
+            
+            # Simuler les mains adverses
+            index = nb_manquantes
+            meilleur_adverse = None
+            
+            for _ in range(nombre_joueurs - 1):
+                if index + 1 < len(cartes_restantes):
+                    main_adverse = [cartes_restantes[index], cartes_restantes[index + 1]]
+                    index += 2
+                    main_adverse_evaluee = EvaluateurMains.evaluer(
+                        main_adverse + cartes_communes_completes
+                    )
+                    
+                    if meilleur_adverse is None:
+                        meilleur_adverse = main_adverse_evaluee
+                    else:
+                        if EvaluateurMains.comparer(main_adverse_evaluee, meilleur_adverse) > 0:
+                            meilleur_adverse = main_adverse_evaluee
+            
+            if meilleur_adverse is not None:
+                # Comparer
+                comparaison = EvaluateurMains.comparer(main_joueur_evaluee, meilleur_adverse)
+                if comparaison > 0:
+                    victoires += 1
+                elif comparaison == 0:
+                    egalites += 1
+            else:
+                # Pas d'adversaires
+                victoires += 1
+        
+        if iterations > 0:
+            return (victoires + egalites / max(1, nombre_joueurs)) / iterations
+        return 0.0
+
+
+class BotPoker:
+    """IA pour jouer au poker."""
+    
+    def __init__(self, niveau: str = "moyen"):
+        """
+        Initialise le bot.
+        
+        Args:
+            niveau: Niveau de difficulté ("facile", "moyen", "difficile")
+        """
+        self.niveau = niveau
+    
+    def prendre_decision(self, main: Main, cartes_communes: List[Carte],
+                         mise_a_suivre: int, pot: int, jetons: int,
+                         simulateur: SimulateurMonteCarlo, nb_joueurs: int) -> str:
+        """
+        Prend une décision pour le bot.
+        
+        Args:
+            main: Main du bot
+            cartes_communes: Cartes communes
+            mise_a_suivre: Mise à suivre
+            pot: Taille du pot
+            jetons: Jetons restants du bot
+            simulateur: Simulateur Monte Carlo
+            nb_joueurs: Nombre de joueurs encore en jeu
+            
+        Returns:
+            Décision: "check", "call", "fold", ou montant de la mise
+        """
+        # Calculer l'équité approximative
+        equite = simulateur.simuler_equite(main, cartes_communes, nb_joueurs, 100)
+        
+        # Ajuster selon le niveau
+        if self.niveau == "facile":
+            # Plus aléatoire, moins précis
+            equite += random.uniform(-0.15, 0.15)
+        elif self.niveau == "difficile":
+            # Plus précis, meilleure lecture
+            equite = min(1.0, equite * 1.1)
+        
+        equite = max(0, min(1, equite))
+        
+        # Cotes du pot
+        if mise_a_suivre > 0:
+            cotes_pot = mise_a_suivre / (pot + mise_a_suivre)
+        else:
+            cotes_pot = 0
+        
+        if mise_a_suivre == 0:
+            # Possibilité de check
+            if equite > 0.3 or random.random() < 0.3:
+                return "check"
+            else:
+                return "fold"
+        else:
+            # Décision de suivre ou se coucher
+            if equite > cotes_pot * 1.2:  # Légère marge
+                # Décider de relancer
+                if equite > 0.7 and jetons > mise_a_suivre * 3:
+                    relance = min(mise_a_suivre * 3, jetons)
+                    return f"raise:{relance}"
+                else:
+                    return "call"
+            else:
+                return "fold"
+
+
+class JeuPoker:
+    """Moteur principal du jeu de poker."""
+    
+    def __init__(self, joueur_humain: Joueur, bots: List[Joueur]):
+        """
+        Initialise le jeu.
+        
+        Args:
+            joueur_humain: Joueur humain
+            bots: Liste des bots
+        """
+        self.joueur_humain = joueur_humain
+        self.bots = bots
+        self.tous_joueurs = [joueur_humain] + bots
+        self.deck = Deck()
+        self.simulateur = SimulateurMonteCarlo(self.deck)
+        self.cartes_communes = []
+        self.pot = 0
+        self.mise_max = 0
+        self.phase = "preflop"  # preflop, flop, turn, river
+        
+        # Petite blind et grosse blind
+        self.petite_blind = 5
+        self.grosse_blind = 10
+        
+        # Positions
+        self.bouton = 0
+        self.position_actuelle = 0
+    
+    def reset_manche(self):
+        """Réinitialise une manche."""
+        self.deck.reinitialiser()
+        self.cartes_communes = []
+        self.pot = 0
+        self.mise_max = 0
+        
+        for joueur in self.tous_joueurs:
+            joueur.reset_pour_manche()
+    
+    def distribuer_cartes(self):
+        """Distribue les cartes aux joueurs."""
+        for _ in range(2):
+            for joueur in self.tous_joueurs:
+                carte = self.deck.piocher(1)[0]
+                joueur.recevoir_carte(carte)
+    
+    def poster_blinds(self):
+        """Les blinds postent leurs mises."""
+        nb_joueurs = len(self.tous_joueurs)
+        
+        # Petite blind
+        sb_index = (self.bouton + 1) % nb_joueurs
+        sb_joueur = self.tous_joueurs[sb_index]
+        mise_sb = sb_joueur.miser(self.petite_blind)
+        self.pot += mise_sb
+        self.mise_max = mise_sb
+        print(f"{sb_joueur.nom} poste la petite blind: {mise_sb}")
+        
+        # Grosse blind
+        bb_index = (self.bouton + 2) % nb_joueurs
+        bb_joueur = self.tous_joueurs[bb_index]
+        mise_bb = bb_joueur.miser(self.grosse_blind)
+        self.pot += mise_bb
+        self.mise_max = max(self.mise_max, mise_bb)
+        print(f"{bb_joueur.nom} poste la grosse blind: {mise_bb}")
+        
+        self.position_actuelle = (bb_index + 1) % nb_joueurs
+    
+    def jouer_tour_enchers(self) -> bool:
+        """
+        Joue un tour d'enchères.
+        
+        Returns:
+            True si la manche continue, False si tout le monde s'est couché
+        """
+        joueurs_actifs = [j for j in self.tous_joueurs if j.est_actif()]
+        nb_actifs = len(joueurs_actifs)
+        
+        if nb_actifs <= 1:
+            return False
+        
+        mises_egales = False
+        premier_tour = True
+        
+        while not mises_egales:
+            mises_egales = True
+            joueurs_a_verifier = []
+            
+            # Vérifier qui doit jouer
+            for i in range(len(self.tous_joueurs)):
+                index = (self.position_actuelle + i) % len(self.tous_joueurs)
+                joueur = self.tous_joueurs[index]
+                
+                if not joueur.est_actif():
+                    continue
+                
+                # Vérifier si ce joueur doit miser
+                if joueur.mise_actuelle < self.mise_max or premier_tour:
+                    if joueur not in joueurs_a_verifier:
+                        joueurs_a_verifier.append(joueur)
+            
+            if not joueurs_a_verifier:
+                break
+            
+            for joueur in joueurs_a_verifier:
+                if not joueur.est_actif():
+                    continue
+                
+                if joueur.est_bot:
+                    decision = self.jouer_tour_bot(joueur)
+                else:
+                    decision = self.jouer_tour_humain(joueur)
+                
+                if decision == "fold":
+                    joueur.se_coucher()
+                    print(f"{joueur.nom} se couche.")
+                elif decision.startswith("raise:"):
+                    montant = int(decision.split(":")[1])
+                    self.mise_max = joueur.mise_actuelle
+                    print(f"{joueur.nom} relance à {montant}")
+                elif decision == "call":
+                    print(f"{joueur.nom} suit.")
+                elif decision == "check":
+                    print(f"{joueur.nom} check.")
+                
+                self.position_actuelle = (self.tous_joueurs.index(joueur) + 1) % len(self.tous_joueurs)
+                
+                # Vérifier s'il reste assez de joueurs
+                if len([j for j in self.tous_joueurs if j.est_actif()]) <= 1:
+                    return False
+            
+            premier_tour = False
+            joueurs_actifs = [j for j in self.tous_joueurs if j.est_actif()]
+            nb_actifs = len(joueurs_actifs)
+            
+            # Vérifier si tout le monde a misé la même chose
+            if nb_actifs > 1:
+                mises = [j.mise_actuelle for j in joueurs_actifs]
+                mises_egales = all(m == self.mise_max for m in mises)
+        
+        return nb_actifs > 1
+    
+    def jouer_tour_humain(self, joueur: Joueur) -> str:
+        """
+        Gère le tour d'un joueur humain.
+        
+        Args:
+            joueur: Joueur humain
+            
+        Returns:
+            Décision prise
+        """
+        self.afficher_etat_jeu()
+        
+        montant_a_suivre = self.mise_max - joueur.mise_actuelle
+        
+        while True:
+            print(f"\nÀ vous de jouer, {joueur.nom} !")
+            print(f"Jetons: {joueur.jetons}")
+            print(f"Mise actuelle: {joueur.mise_actuelle}")
+            print(f"Montant à suivre: {montant_a_suivre}")
+            print(f"Pot: {self.pot}")
+            
+            if montant_a_suivre == 0:
+                print("Options: [c]check, [m]miser, [f]fold")
+                choix = input("Votre choix: ").lower()
+                
+                if choix == 'c':
+                    return "check"
+                elif choix == 'f':
+                    return "fold"
+                elif choix == 'm':
+                    montant = input("Montant de la mise: ")
+                    try:
+                        montant = int(montant)
+                        if montant > 0 and montant <= joueur.jetons:
+                            mise = joueur.miser(montant)
+                            self.pot += mise
+                            return f"raise:{mise}"
+                        else:
+                            print("Montant invalide.")
+                    except ValueError:
+                        print("Veuillez entrer un nombre valide.")
+            else:
+                print(f"Options: [c]call {montant_a_suivre}, [r]relancer, [f]fold")
+                choix = input("Votre choix: ").lower()
+                
+                if choix == 'c':
+                    mise = joueur.miser(montant_a_suivre)
+                    self.pot += mise
+                    return "call"
+                elif choix == 'f':
+                    return "fold"
+                elif choix == 'r':
+                    montant = input(f"Montant de la relance (minimum {montant_a_suivre}): ")
+                    try:
+                        montant = int(montant)
+                        if montant >= montant_a_suivre and montant <= joueur.jetons:
+                            mise = joueur.miser(montant)
+                            self.pot += mise
+                            return f"raise:{mise}"
+                        else:
+                            print("Montant invalide.")
+                    except ValueError:
+                        print("Veuillez entrer un nombre valide.")
+    
+    def jouer_tour_bot(self, bot: Joueur) -> str:
+        """
+        Gère le tour d'un bot.
+        
+        Args:
+            bot: Joueur bot
+            
+        Returns:
+            Décision prise
+        """
+        # Petit délai pour rendre le jeu plus naturel
+        time.sleep(1)
+        
+        niveau = "moyen"
+        if bot.nom == "Bot Facile":
+            niveau = "facile"
+        elif bot.nom == "Bot Difficile":
+            niveau = "difficile"
+        
+        bot_ia = BotPoker(niveau)
+        nb_actifs = len([j for j in self.tous_joueurs if j.est_actif()])
+        
+        decision = bot_ia.prendre_decision(
+            bot.main,
+            self.cartes_communes,
+            self.mise_max - bot.mise_actuelle,
+            self.pot,
+            bot.jetons,
+            self.simulateur,
+            nb_actifs
+        )
+        
+        print(f"\n{bot.nom} réfléchit...")
+        time.sleep(1)
+        
+        return decision
+    
+    def jouer_flop(self):
+        """Joue le flop (3 premières cartes communes)."""
+        print("\n" + "="*50)
+        print("🔥 FLOP 🔥")
+        print("="*50)
+        
+        # Brûler une carte
+        self.deck.piocher(1)
+        
+        # Tirer 3 cartes
+        nouvelles = self.deck.piocher(3)
+        self.cartes_communes.extend(nouvelles)
+        
+        self.phase = "flop"
+        self.mise_max = 0
+        for joueur in self.tous_joueurs:
+            joueur.mise_actuelle = 0
+        
+        self.afficher_cartes_communes()
+    
+    def jouer_turn(self):
+        """Joue la turn (4ème carte commune)."""
+        print("\n" + "="*50)
+        print("🔄 TURN 🔄")
+        print("="*50)
+        
+        # Brûler une carte
+        self.deck.piocher(1)
+        
+        # Tirer 1 carte
+        nouvelle = self.deck.piocher(1)[0]
+        self.cartes_communes.append(nouvelle)
+        
+        self.phase = "turn"
+        self.mise_max = 0
+        for joueur in self.tous_joueurs:
+            joueur.mise_actuelle = 0
+        
+        self.afficher_cartes_communes()
+    
+    def jouer_river(self):
+        """Joue la river (5ème carte commune)."""
+        print("\n" + "="*50)
+        print("🌊 RIVER 🌊")
+        print("="*50)
+        
+        # Brûler une carte
+        self.deck.piocher(1)
+        
+        # Tirer 1 carte
+        nouvelle = self.deck.piocher(1)[0]
+        self.cartes_communes.append(nouvelle)
+        
+        self.phase = "river"
+        self.mise_max = 0
+        for joueur in self.tous_joueurs:
+            joueur.mise_actuelle = 0
+        
+        self.afficher_cartes_communes()
+    
+    def determiner_gagnant(self) -> List[Tuple[Joueur, Tuple]]:
+        """
+        Détermine le(s) gagnant(s) de la manche.
+        
+        Returns:
+            Liste des (joueur, main_évaluée) triée par ordre de victoire
+        """
+        joueurs_actifs = [j for j in self.tous_joueurs if not j.a_couche]
+        
+        if len(joueurs_actifs) == 1:
+            return [(joueurs_actifs[0], ("Victoire par abandon", [0], []))]
+        
+        evaluations = []
+        for joueur in joueurs_actifs:
+            main_evaluee = EvaluateurMains.evaluer(
+                joueur.main.cartes + self.cartes_communes
+            )
+            evaluations.append((joueur, main_evaluee))
+        
+        # Trier par force de main
+        evaluations.sort(
+            key=lambda x: (
+                EvaluateurMains.COMBINAISONS.index(x[1][0]),
+                x[1][1]
+            ),
+            reverse=True
+        )
+        
+        # Vérifier les égalités
+        gagnants = [evaluations[0]]
+        for i in range(1, len(evaluations)):
+            if EvaluateurMains.comparer(evaluations[i][1], gagnants[0][1]) == 0:
+                gagnants.append(evaluations[i])
+            else:
+                break
+        
+        return gagnants
+    
+    def afficher_cartes_communes(self):
+        """Affiche les cartes communes en ASCII."""
+        if not self.cartes_communes:
+            return
+        
+        print("\nCartes communes:")
+        cartes_ascii = [carte.ascii() for carte in self.cartes_communes]
+        
+        for i in range(5):
+            ligne = " ".join(carte[i] for carte in cartes_ascii)
+            print(ligne)
+    
+    def afficher_mains_joueurs(self, montrer_cachees: bool = False):
+        """Affiche les mains des joueurs."""
+        for joueur in self.tous_joueurs:
+            if joueur.est_actif() or montrer_cachees:
+                print(f"\n{joueur.nom}:")
+                if joueur.main.cartes:
+                    for ligne in joueur.main.ascii():
+                        print("  " + ligne)
+                else:
+                    print("  [Pas de cartes]")
+    
+    def afficher_etat_jeu(self):
+        """Affiche l'état actuel du jeu."""
+        print("\n" + "="*60)
+        print(f"PHASE: {self.phase.upper()} | POT: {self.pot}")
+        print("="*60)
+        
+        self.afficher_cartes_communes()
+        
+        print("\nMains des joueurs actifs:")
+        for joueur in self.tous_joueurs:
+            if joueur.est_actif():
+                if joueur.est_bot:
+                    print(f"  {joueur.nom}: [🂠 🂠] (cachées)")
+                else:
+                    print(f"\n  {joueur.nom}:")
+                    for ligne in joueur.main.ascii():
+                        print("    " + ligne)
+                print(f"    Jetons: {joueur.jetons} | Misé: {joueur.mise_actuelle}")
+    
+    def jouer_partie(self):
+        """Joue une partie complète de poker."""
+        print("\n" + "="*60)
+        print("🎲 BIENVENUE AU TEXAS HOLD'EM POKER 🎲")
+        print("="*60)
+        
+        while True:
+            self.reset_manche()
+            
+            print(f"\nNouvelle manche ! Bouton au joueur {self.tous_joueurs[self.bouton].nom}")
+            
+            # Distribuer les cartes
+            self.distribuer_cartes()
+            
+            print("\nDistribution des cartes:")
+            self.afficher_mains_joueurs(montrer_cachees=False)
+            
+            # Blinds
+            print("\n--- Blinds ---")
+            self.poster_blinds()
+            
+            # Pré-flop
+            print("\n--- Pré-flop ---")
+            continuer = self.jouer_tour_enchers()
+            if not continuer:
+                gagnants = self.determiner_gagnant()
+                self.distribuer_gains(gagnants)
+                self.afficher_resultats(gagnants)
+                self.bouton = (self.bouton + 1) % len(self.tous_joueurs)
+                
+                if not self.continuer_partie():
+                    break
+                continue
+            
+            # Flop
+            self.jouer_flop()
+            continuer = self.jouer_tour_enchers()
+            if not continuer:
+                gagnants = self.determiner_gagnant()
+                self.distribuer_gains(gagnants)
+                self.afficher_resultats(gagnants)
+                self.bouton = (self.bouton + 1) % len(self.tous_joueurs)
+                
+                if not self.continuer_partie():
+                    break
+                continue
+            
+            # Turn
+            self.jouer_turn()
+            continuer = self.jouer_tour_enchers()
+            if not continuer:
+                gagnants = self.determiner_gagnant()
+                self.distribuer_gains(gagnants)
+                self.afficher_resultats(gagnants)
+                self.bouton = (self.bouton + 1) % len(self.tous_joueurs)
+                
+                if not self.continuer_partie():
+                    break
+                continue
+            
+            # River
+            self.jouer_river()
+            continuer = self.jouer_tour_enchers()
+            
+            # Showdown
+            print("\n" + "="*50)
+            print("🃏 SHOWDOWN 🃏")
+            print("="*50)
+            
+            self.afficher_mains_joueurs(montrer_cachees=True)
+            gagnants = self.determiner_gagnant()
+            self.distribuer_gains(gagnants)
+            self.afficher_resultats(gagnants)
+            
+            self.bouton = (self.bouton + 1) % len(self.tous_joueurs)
+            
+            if not self.continuer_partie():
+                break
+    
+    def distribuer_gains(self, gagnants: List[Tuple[Joueur, Tuple]]):
+        """Distribue le pot aux gagnants."""
+        part = self.pot // len(gagnants)
+        for joueur, _ in gagnants:
+            joueur.jetons += part
+        print(f"\n💰 {len(gagnants)} gagnant(s) reçoivent {part} jetons chacun !")
+    
+    def afficher_resultats(self, gagnants: List[Tuple[Joueur, Tuple]]):
+        """Affiche les résultats de la manche."""
+        print("\n" + "="*50)
+        print("🏆 RÉSULTATS 🏆")
+        print("="*50)
+        
+        if len(gagnants) == 1:
+            joueur, main_eval = gagnants[0]
+            if main_eval and main_eval[0] != "Victoire par abandon":
+                print(f"{joueur.nom} gagne avec {main_eval[0]} !")
+            else:
+                print(f"{joueur.nom} gagne (tout le monde s'est couché) !")
+        else:
+            print("Égalité entre:")
+            for joueur, main_eval in gagnants:
+                if main_eval and main_eval[0] != "Victoire par abandon":
+                    print(f"  - {joueur.nom} avec {main_eval[0]}")
+                else:
+                    print(f"  - {joueur.nom}")
+        
+        print("\nJetons finaux:")
+        for joueur in self.tous_joueurs:
+            print(f"  {joueur.nom}: {joueur.jetons}")
+    
+    def continuer_partie(self) -> bool:
+        """Demande si on continue la partie."""
+        joueurs_avec_jetons = [j for j in self.tous_joueurs if j.jetons > 0]
+        
+        if len(joueurs_avec_jetons) <= 1:
+            print("\n🏆 FIN DE LA PARTIE 🏆")
+            gagnant = joueurs_avec_jetons[0] if joueurs_avec_jetons else None
+            if gagnant:
+                print(f"{gagnant.nom} remporte la partie !")
+            return False
+        
+        if self.joueur_humain.jetons <= 0:
+            print("\n❌ Vous avez perdu tous vos jetons !")
+            return False
+        
+        print("\n" + "-"*40)
+        reponse = input("Voulez-vous jouer une nouvelle manche ? (o/n): ")
+        return reponse.lower() == 'o'
+
+
+def main():
+    """Point d'entrée principal."""
+    print("🎮 TEXAS HOLD'EM POKER - SIMULATEUR 🎮")
+    print("="*50)
+    
+    # Créer le joueur humain
+    nom = input("Entrez votre nom: ") or "Joueur"
+    joueur = Joueur(nom, est_bot=False, jetons=1000)
+    
+    # Créer les bots
+    bots = [
+        Joueur("Bot Facile", est_bot=True, jetons=1000),
+        Joueur("Bot Moyen", est_bot=True, jetons=1000),
+        Joueur("Bot Difficile", est_bot=True, jetons=1000)
+    ]
+    
+    # Lancer le jeu
+    jeu = JeuPoker(joueur, bots)
+    jeu.jouer_partie()
+    
+    print("\nMerci d'avoir joué ! À bientôt !")
+
+
+if __name__ == "__main__":
+    main()
