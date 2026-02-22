@@ -24,6 +24,6 @@ Ce projet implémente un simulateur complet de poker Texas Hold'em en respectant
 ### Démo rapide
 
 
-python3 poker.py
+python3 simulateur.py
 # Entrez votre nom
 # Lancez une partie contre 3 bots
